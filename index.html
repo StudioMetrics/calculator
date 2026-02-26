@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Studio Metrics - Commission vs Renter Calculator</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #1a1a1a;
+      margin-bottom: 8px;
+      font-size: 24px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .tab {
+      padding: 12px 24px;
+      border: none;
+      background: #e0e0e0;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .tab.active {
+      background: white;
+      color: #0066cc;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .section {
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+    }
+    .field label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #666;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .field input, .field select {
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 15px;
+      transition: border-color 0.2s;
+    }
+    .field input:focus, .field select:focus {
+      outline: none;
+      border-color: #0066cc;
+    }
+    .field input:read-only {
+      background: #f8f8f8;
+      color: #666;
+    }
+    .results {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 24px;
+    }
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .result-row:last-child {
+      border-bottom: none;
+    }
+    .result-label {
+      font-size: 14px;
+      color: #666;
+    }
+    .result-value {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    .result-value.positive { color: #2e7d32; }
+    .result-value.negative { color: #c62828; }
+    .highlight {
+      background: #e3f2fd;
+      border-radius: 6px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .highlight .result-value {
+      font-size: 24px;
+      color: #0066cc;
+    }
+    .scenarios {
+      margin-top: 24px;
+    }
+    .scenario-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .scenario-row:last-child {
+      border-bottom: none;
+    }
+    .scenario-label {
+      font-size: 13px;
+      color: #555;
+    }
+    .scenario-value {
+      font-size: 15px;
+      font-weight: 500;
+    }
+    .help-text {
+      font-size: 12px;
+      color: #888;
+      margin-top: 4px;
+    }
+    @media (max-width: 600px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // Utility for currency formatting
+    const formatCurrency = (val) => {
+      if (val === null || val === undefined || isNaN(val)) return '$0.00';
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0
+      }).format(val);
+    };
+
+    const formatPercent = (val) => {
+      if (val === null || val === undefined || isNaN(val)) return '0%';
+      return (val * 100).toFixed(2) + '%';
+    };
+
+    // Commission to Renter Calculator
+    const CommissionToRenter = () => {
+      const [inputs, setInputs] = useState({
+        serviceIncome: 201965,
+        tips: 32099,
+        commissionPct: 50,
+        weeklyRent: 525,
+        assistantHourly: 20,
+        assistantHours: 6,
+        assistantDays: 4,
+        asstTaxPct: 7,
+        ccFeePct: 2.9,
+        salonCogs: 96413,
+        salonMarketing: 33375,
+        totalStylistHours: 16375.25,
+        stylistHours: 1719.82,
+      });
+
+      const handleChange = (field, value) => {
+        setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
+      };
+
+      const calculations = useMemo(() => {
+        const totalIncome = inputs.serviceIncome + inputs.tips;
+        const commissionGross = inputs.serviceIncome * (inputs.commissionPct / 100);
+        
+        // Stylist % of salon usage
+        const usagePct = inputs.stylistHours / inputs.totalStylistHours;
+        
+        // COGS calculations
+        const yearlyRent = inputs.weeklyRent * 52;
+        const asstWeekly = inputs.assistantHourly * inputs.assistantHours * inputs.assistantDays * (1 + inputs.asstTaxPct / 100);
+        const asstYearly = asstWeekly * 52;
+        const stylistCogs = usagePct * inputs.salonCogs;
+        const ccFees = inputs.serviceIncome * (inputs.ccFeePct / 100);
+        const stylistMarketing = usagePct * inputs.salonMarketing;
+        
+        const totalCOGS = yearlyRent + stylistCogs + ccFees + stylistMarketing + asstYearly;
+        
+        // Take home scenarios
+        const scenarios = [0, 10, 20, 30, 40, 50].map(retention => {
+          const retainedIncome = totalIncome * (1 - retention / 100);
+          const takeHome = retainedIncome - totalCOGS;
+          return { retention, takeHome, retainedIncome };
+        });
+
+        // Break-even rent calculation
+        const currentTakeHome = commissionGross + inputs.tips * 0.9; // Assume keep 90% of tips
+        const maxRentWeekly = (currentTakeHome + totalCOGS - totalIncome * 0.9) / 52;
+
+        return {
+          totalIncome,
+          commissionGross,
+          usagePct,
+          yearlyRent,
+          asstYearly,
+          stylistCogs,
+          ccFees,
+          stylistMarketing,
+          totalCOGS,
+          scenarios,
+          currentTakeHome,
+          maxRentWeekly
+        };
+      }, [inputs]);
+
+      return (
+        <div className="card">
+          <div className="section">
+            <div className="section-title">Income</div>
+            <div className="form-row">
+              <div className="field">
+                <label>Annual Service Income</label>
+                <input 
+                  type="number" 
+                  value={inputs.serviceIncome}
+                  onChange={(e) => handleChange('serviceIncome', e.target.value)}
+                />
+                <span className="help-text">Total services billed</span>
+              </div>
+              <div className="field">
+                <label>Annual Tips</label>
+                <input 
+                  type="number" 
+                  value={inputs.tips}
+                  onChange={(e) => handleChange('tips', e.target.value)}
+                />
+                <span className="help-text">Cash tips received</span>
+              </div>
+              <div className="field">
+                <label>Commission %</label>
+                <input 
+                  type="number" 
+                  value={inputs.commissionPct}
+                  onChange={(e) => handleChange('commissionPct', e.target.value)}
+                />
+                <span className="help-text">Current commission split</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="section">
+            <div className="section-title">Stylist Usage</div>
+            <div className="form-row">
+              <div className="field">
+                <label>Your Hours Worked</label>
+                <input 
+                  type="number" 
+                  value={inputs.stylistHours}
+                  onChange={(e) => handleChange('stylistHours', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Total Salon Hours</label>
+                <input 
+                  type="number" 
+                  value={inputs.totalStylistHours}
+                  onChange={(e) => handleChange('totalStylistHours', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Your Usage %</label>
+                <input 
+                  type="text" 
+                  value={formatPercent(calculations.usagePct)}
+                  readOnly
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="section">
+            <div className="section-title">Costs (COGS)</div>
+            <div className="form-row">
+              <div className="field">
+                <label>Weekly Rent</label>
+                <input 
+                  type="number" 
+                  value={inputs.weeklyRent}
+                  onChange={(e) => handleChange('weeklyRent', e.target.value)}
+                />
+                <span className="help-text">Booth rental rate</span>
+              </div>
+              <div className="field">
+                <label>Total Salon COGS</label>
+                <input 
+                  type="number" 
+                  value={inputs.salonCogs}
+                  onChange={(e) => handleChange('salonCogs', e.target.value)}
+                />
+                <span className="help-text">Color, supplies, backbar</span>
+              </div>
+              <div className="field">
+                <label>Total Salon Marketing</label>
+                <input 
+                  type="number" 
+                  value={inputs.salonMarketing}
+                  onChange={(e) => handleChange('salonMarketing', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="field">
+                <label>Assistant Hourly Rate</label>
+                <input 
+                  type="number" 
+                  value={inputs.assistantHourly}
+                  onChange={(e) => handleChange('assistantHourly', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Assistant Hours/Day</label>
+                <input 
+                  type="number" 
+                  value={inputs.assistantHours}
+                  onChange={(e) => handleChange('assistantHours', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Assistant Days/Week</label>
+                <input 
+                  type="number" 
+                  value={inputs.assistantDays}
+                  onChange={(e) => handleChange('assistantDays', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="field">
+                <label>Assistant Tax %</label>
+                <input 
+                  type="number" 
+                  value={inputs.asstTaxPct}
+                  onChange={(e) => handleChange('asstTaxPct', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Credit Card Fee %</label>
+                <input 
+                  type="number" 
+                  value={inputs.ccFeePct}
+                  onChange={(e) => handleChange('ccFeePct', e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="results">
+            <div className="section-title">Current vs Renter Comparison</div>
+            
+            <div className="result-row">
+              <span className="result-label">Current Commission Take-Home</span>
+              <span className="result-value positive">{formatCurrency(calculations.currentTakeHome)}</span>
+            </div>
+            <div className="result-row">
+              <span className="result-label">Total Renter COGS</span>
+              <span className="result-value negative">{formatCurrency(calculations.totalCOGS)}</span>
+            </div>
+
+            <div className="highlight">
+              <div className="result-row">
+                <span className="result-label">Renter Take-Home (no client loss)</span>
+                <span className="result-value positive">{formatCurrency(calculations.scenarios[0].takeHome)}</span>
+              </div>
+            </div>
+
+            <div className="scenarios">
+              <div className="section-title">Renter Scenarios (Client Retention)</div>
+              {calculations.scenarios.map(({ retention, takeHome }) => (
+                <div key={retention} className="scenario-row">
+                  <span className="scenario-label">
+                    {retention === 0 ? 'No clients stay with salon' : `${retention}% clients stay with salon`}
+                  </span>
+                  <span className={`scenario-value ${takeHome > calculations.currentTakeHome ? 'positive' : 'negative'}`}>
+                    {formatCurrency(takeHome)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="highlight" style={{ marginTop: '20px', background: '#e8f5e9' }}>
+              <div className="result-row">
+                <span className="result-label">Break-Even Weekly Rent</span>
+                <span className="result-value" style={{ color: '#2e7d32' }}>
+                  {formatCurrency(calculations.maxRentWeekly)}/week
+                </span>
+              </div>
+              <span className="help-text" style={{ display: 'block', marginTop: '8px' }}>
+                Maximum rent you could pay to match current commission income
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Renter to Commission Calculator
+    const RenterToCommission = () => {
+      const [inputs, setInputs] = useState({
+        serviceIncome: 201965,
+        tips: 32099,
+        weeklyRent: 525,
+        otherExpenses: 15000,
+        desiredCommission: 50,
+        assistantHourly: 20,
+        assistantHours: 6,
+        assistantDays: 4,
+        asstTaxPct: 7,
+        salonCogs: 96413,
+        salonMarketing: 33375,
+        totalStylistHours: 16375.25,
+        stylistHours: 1719.82,
+        ccFeePct: 2.9,
+      });
+
+      const handleChange = (field, value) => {
+        setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
+      };
+
+      const calculations = useMemo(() => {
+        const totalIncome = inputs.serviceIncome + inputs.tips;
+        const currentRent = inputs.weeklyRent * 52;
+        const usagePct = inputs.stylistHours / inputs.totalStylistHours;
+        
+        // Current renter expenses
+        const asstWeekly = inputs.assistantHourly * inputs.assistantHours * inputs.assistantDays * (1 + inputs.asstTaxPct / 100);
+        const asstYearly = asstWeekly * 52;
+        const stylistCogs = usagePct * inputs.salonCogs;
+        const ccFees = inputs.serviceIncome * (inputs.ccFeePct / 100);
+        const stylistMarketing = usagePct * inputs.salonMarketing;
+        
+        const totalExpenses = currentRent + asstYearly + stylistCogs + ccFees + stylistMarketing + inputs.otherExpenses;
+        const currentTakeHome = totalIncome - totalExpenses;
+        
+        // What commission % needed to match?
+        // commissionIncome = serviceIncome * (commissionPct/100) + tips * 0.9
+        // We want: commissionIncome = currentTakeHome
+        // commissionPct = (currentTakeHome - tips * 0.9) / serviceIncome * 100
+        const requiredCommission = ((currentTakeHome - inputs.tips * 0.9) / inputs.serviceIncome) * 100;
+        
+        // With desired commission, what income?
+        const commissionIncome = inputs.serviceIncome * (inputs.desiredCommission / 100) + inputs.tips * 0.9;
+        const difference = commissionIncome - currentTakeHome;
+
+        return {
+          totalIncome,
+          currentRent,
+          totalExpenses,
+          currentTakeHome,
+          requiredCommission,
+          commissionIncome,
+          difference
+        };
+      }, [inputs]);
+
+      return (
+        <div className="card">
+          <div className="section">
+            <div className="section-title">Current Renter Setup</div>
+            <div className="form-row">
+              <div className="field">
+                <label>Annual Service Income</label>
+                <input 
+                  type="number" 
+                  value={inputs.serviceIncome}
+                  onChange={(e) => handleChange('serviceIncome', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Annual Tips</label>
+                <input 
+                  type="number" 
+                  value={inputs.tips}
+                  onChange={(e) => handleChange('tips', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Weekly Rent</label>
+                <input 
+                  type="number" 
+                  value={inputs.weeklyRent}
+                  onChange={(e) => handleChange('weeklyRent', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="field">
+                <label>Other Expenses</label>
+                <input 
+                  type="number" 
+                  value={inputs.otherExpenses}
+                  onChange={(e) => handleChange('otherExpenses', e.target.value)}
+                />
+                <span className="help-text">Insurance, supplies, etc.</span>
+              </div>
+              <div className="field">
+                <label>Test Commission %</label>
+                <input 
+                  type="number" 
+                  value={inputs.desiredCommission}
+                  onChange={(e) => handleChange('desiredCommission', e.target.value)}
+                />
+                <span className="help-text">Compare this commission rate</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="results">
+            <div className="section-title">Commission Equivalent</div>
+            
+            <div className="result-row">
+              <span className="result-label">Current Renter Take-Home</span>
+              <span className="result-value">{formatCurrency(calculations.currentTakeHome)}</span>
+            </div>
+            
+            <div className="highlight" style={{ background: '#fff3e0' }}>
+              <div className="result-row">
+                <span className="result-label">Required Commission % to Match</span>
+                <span className="result-value" style={{ color: '#e65100' }}>
+                  {calculations.requiredCommission.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+
+            <div className="result-row" style={{ marginTop: '16px' }}>
+              <span className="result-label">Income at {inputs.desiredCommission}% commission</span>
+              <span className="result-value">{formatCurrency(calculations.commissionIncome)}</span>
+            </div>
+            <div className="result-row">
+              <span className="result-label">Difference vs Current</span>
+              <span className={`result-value ${calculations.difference >= 0 ? 'positive' : 'negative'}`}>
+                {calculations.difference >= 0 ? '+' : ''}{formatCurrency(calculations.difference)}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const App = () => {
+      const [activeTab, setActiveTab] = useState('commission-to-renter');
+
+      return (
+        <div className="container">
+          <h1>Studio Metrics Calculator</h1>
+          <p className="subtitle">Commission vs Renter Analysis Tool</p>
+          
+          <div className="tabs">
+            <button 
+              className={`tab ${activeTab === 'commission-to-renter' ? 'active' : ''}`}
+              onClick={() => setActiveTab('commission-to-renter')}
+            >
+              Commission → Renter
+            </button>
+            <button 
+              className={`tab ${activeTab === 'renter-to-commission' ? 'active' : ''}`}
+              onClick={() => setActiveTab('renter-to-commission')}
+            >
+              Renter → Commission
+            </button>
+          </div>
+
+          {activeTab === 'commission-to-renter' ? <CommissionToRenter /> : <RenterToCommission />}
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

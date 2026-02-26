@@ -1,0 +1,41 @@
+# Studio Metrics Calculator
+
+A simple React-based calculator for salon stylists to evaluate Commission vs Renter compensation models.
+
+## Features
+
+### Commission → Renter
+- Calculate equivalent rent based on current commission earnings
+- Account for proportional salon costs (color, supplies, marketing, CC fees)
+- Model client retention scenarios (0-50% client loss)
+- Find break-even weekly rent
+
+### Renter → Commission  
+- Calculate required commission percentage to match current renter income
+- Compare against different commission splits
+- See income difference at various rates
+
+## Usage
+
+Open `index.html` directly in a browser, or serve locally:
+
+```bash
+python3 -m http.server 8080
+# Open http://localhost:8080
+```
+
+## Formula Reference
+
+Based on Soulver worksheet logic from Studio Los Gatos:
+
+- **Stylist % of Usage**: `stylist_hours / total_stylist_hours`
+- **COGS Allocation**: proportional costs based on usage percentage
+  - Rent: weekly × 52
+  - Assistant: hourly × hours × days × (1 + tax%) × 52
+  - Color/Supplies: usage% × salon_cogs
+  - Marketing: usage% × salon_marketing
+  - CC Fees: service_income × 2.9%
+
+## License
+
+Private - StudioMetrics
