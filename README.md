@@ -2,6 +2,14 @@
 
 A simple React-based calculator for salon stylists to evaluate Commission vs Renter compensation models.
 
+## Architecture & Decisions
+
+**Why a single HTML file?**
+We built this as a single `index.html` file using React via CDN rather than a full toolchain (no npm, Vite, or Webpack). 
+- **Absolute simplicity:** It can be hosted anywhere for free without a build process (currently on GitHub Pages).
+- **Embedded ready:** The logic is contained entirely in one place, making it easy to drop into an iFrame or another marketing site later.
+- **Immediate execution:** Perfect for rapid prototyping and validation of the math.
+
 ## Features
 
 ### Commission → Renter
@@ -15,18 +23,9 @@ A simple React-based calculator for salon stylists to evaluate Commission vs Ren
 - Compare against different commission splits
 - See income difference at various rates
 
-## Usage
-
-Open `index.html` directly in a browser, or serve locally:
-
-```bash
-python3 -m http.server 8080
-# Open http://localhost:8080
-```
-
 ## Formula Reference
 
-Based on Soulver worksheet logic from Studio Los Gatos:
+Based on Soulver worksheet logic from Studio Los Gatos. We used a **proportional COGS allocation model**:
 
 - **Stylist % of Usage**: `stylist_hours / total_stylist_hours`
 - **COGS Allocation**: proportional costs based on usage percentage
@@ -35,6 +34,15 @@ Based on Soulver worksheet logic from Studio Los Gatos:
   - Color/Supplies: usage% × salon_cogs
   - Marketing: usage% × salon_marketing
   - CC Fees: service_income × 2.9%
+
+## Usage
+
+Open `index.html` directly in a browser, or serve locally:
+
+```bash
+python3 -m http.server 8080
+# Open http://localhost:8080
+```
 
 ## License
 
