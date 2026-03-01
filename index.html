@@ -520,8 +520,27 @@
       );
     };
 
+    const VALID_TABS = ['commission-to-renter', 'renter-to-commission'];
+    const getTabFromHash = () => {
+      const hash = window.location.hash.replace('#', '');
+      return VALID_TABS.includes(hash) ? hash : 'commission-to-renter';
+    };
+
     const App = () => {
-      const [activeTab, setActiveTab] = useState('commission-to-renter');
+      const [activeTab, setActiveTab] = useState(getTabFromHash);
+
+      // Sync hash → tab on popstate (back/forward)
+      useEffect(() => {
+        const onHashChange = () => setActiveTab(getTabFromHash());
+        window.addEventListener('hashchange', onHashChange);
+        return () => window.removeEventListener('hashchange', onHashChange);
+      }, []);
+
+      // Sync tab → hash on click
+      const switchTab = (tab) => {
+        window.location.hash = tab;
+        setActiveTab(tab);
+      };
 
       return (
         <div className="container">
@@ -529,15 +548,15 @@
           <p className="subtitle">Commission vs Renter Analysis Tool</p>
           
           <div className="tabs">
-            <button 
+            <button
               className={`tab ${activeTab === 'commission-to-renter' ? 'active' : ''}`}
-              onClick={() => setActiveTab('commission-to-renter')}
+              onClick={() => switchTab('commission-to-renter')}
             >
               Commission → Renter
             </button>
-            <button 
+            <button
               className={`tab ${activeTab === 'renter-to-commission' ? 'active' : ''}`}
-              onClick={() => setActiveTab('renter-to-commission')}
+              onClick={() => switchTab('renter-to-commission')}
             >
               Renter → Commission
             </button>
