@@ -177,6 +177,22 @@
     // Core math & formatting loaded from calculator.js
     // (formatCurrency, formatPercent, calculateCommissionToRenter, calculateRenterToCommission)
 
+    // Currency input: shows "$1,234" when blurred, raw number when editing
+    const CurrencyInput = ({ value, onChange, ...props }) => {
+      const [focused, setFocused] = useState(false);
+      const display = focused ? (value || '') : formatCurrency(value);
+      return (
+        <input
+          type={focused ? 'number' : 'text'}
+          value={display}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={onChange}
+          {...props}
+        />
+      );
+    };
+
     // Commission to Renter Calculator
     const CommissionToRenter = () => {
       const [inputs, setInputs] = useState({
@@ -208,8 +224,7 @@
             <div className="form-row">
               <div className="field">
                 <label>Annual Service Income</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.serviceIncome}
                   onChange={(e) => handleChange('serviceIncome', e.target.value)}
                 />
@@ -217,8 +232,7 @@
               </div>
               <div className="field">
                 <label>Annual Tips</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.tips}
                   onChange={(e) => handleChange('tips', e.target.value)}
                 />
@@ -226,8 +240,8 @@
               </div>
               <div className="field">
                 <label>Commission %</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={inputs.commissionPct}
                   onChange={(e) => handleChange('commissionPct', e.target.value)}
                 />
@@ -241,16 +255,16 @@
             <div className="form-row">
               <div className="field">
                 <label>Your Hours Worked</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={inputs.stylistHours}
                   onChange={(e) => handleChange('stylistHours', e.target.value)}
                 />
               </div>
               <div className="field">
                 <label>Total Salon Hours</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={inputs.totalStylistHours}
                   onChange={(e) => handleChange('totalStylistHours', e.target.value)}
                 />
@@ -271,8 +285,7 @@
             <div className="form-row">
               <div className="field">
                 <label>Weekly Rent</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.weeklyRent}
                   onChange={(e) => handleChange('weeklyRent', e.target.value)}
                 />
@@ -280,8 +293,7 @@
               </div>
               <div className="field">
                 <label>Total Salon COGS</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.salonCogs}
                   onChange={(e) => handleChange('salonCogs', e.target.value)}
                 />
@@ -289,8 +301,7 @@
               </div>
               <div className="field">
                 <label>Total Salon Marketing</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.salonMarketing}
                   onChange={(e) => handleChange('salonMarketing', e.target.value)}
                 />
@@ -299,8 +310,7 @@
             <div className="form-row">
               <div className="field">
                 <label>Assistant Hourly Rate</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.assistantHourly}
                   onChange={(e) => handleChange('assistantHourly', e.target.value)}
                 />
@@ -423,24 +433,21 @@
             <div className="form-row">
               <div className="field">
                 <label>Annual Service Income</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.serviceIncome}
                   onChange={(e) => handleChange('serviceIncome', e.target.value)}
                 />
               </div>
               <div className="field">
                 <label>Annual Tips</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.tips}
                   onChange={(e) => handleChange('tips', e.target.value)}
                 />
               </div>
               <div className="field">
                 <label>Weekly Rent</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.weeklyRent}
                   onChange={(e) => handleChange('weeklyRent', e.target.value)}
                 />
@@ -449,8 +456,7 @@
             <div className="form-row">
               <div className="field">
                 <label>Other Expenses</label>
-                <input 
-                  type="number" 
+                <CurrencyInput
                   value={inputs.otherExpenses}
                   onChange={(e) => handleChange('otherExpenses', e.target.value)}
                 />
