@@ -5,7 +5,8 @@ const {
   formatPercent,
   calculateCommissionToRenter,
   calculateRenterToCommission,
-  calculateTieredCommission
+  calculateTieredCommission,
+  calculateSelfEmploymentTax
 } = require('./calculator');
 
 // ── Default test inputs (Studio Los Gatos sample data) ──────────────
@@ -154,6 +155,25 @@ describe('calculateCommissionToRenter', () => {
     expect(typeof result.maxRentWeekly).toBe('number');
     expect(isFinite(result.maxRentWeekly)).toBe(true);
   });
+
+  it('returns salon benefits value equal to total COGS', () => {
+    expect(result.salonBenefitsValue).toBeCloseTo(result.totalCOGS, 2);
+  });
+
+  it('returns salon benefits breakdown with 5 items', () => {
+    expect(result.salonBenefitsBreakdown).toHaveLength(5);
+    const labels = result.salonBenefitsBreakdown.map(b => b.label);
+    expect(labels).toContain('Booth Rent');
+    expect(labels).toContain('Color & Supplies');
+    expect(labels).toContain('Support Staff');
+  });
+
+  it('calculates crossover retention percentage', () => {
+    const expected = ((result.totalIncome - result.totalCOGS - result.currentTakeHome) / result.totalIncome) * 100;
+    expect(result.crossoverRetention).toBeCloseTo(expected, 2);
+    expect(result.crossoverRetention).toBeGreaterThan(0);
+    expect(result.crossoverRetention).toBeLessThan(100);
+  });
 });
 
 // ── Tiered Commission ───────────────────────────────────────────────
@@ -198,6 +218,29 @@ describe('calculateTieredCommission', () => {
     const result = calculateTieredCommission(2000);
     expect(result.grossCommission).toBe(800);
     expect(result.tierBreakdown).toHaveLength(1);
+  });
+});
+
+// ── Self-Employment Tax ─────────────────────────────────────────────
+
+describe('calculateSelfEmploymentTax', () => {
+  it('calculates SE tax on positive earnings', () => {
+    const result = calculateSelfEmploymentTax(100000);
+    // 100000 * 0.9235 * 0.153 = 14,129.55
+    expect(result.seTax).toBeCloseTo(14129.55, 2);
+    expect(result.effectiveRate).toBeCloseTo(0.141296, 4);
+  });
+
+  it('returns zero for zero earnings', () => {
+    const result = calculateSelfEmploymentTax(0);
+    expect(result.seTax).toBe(0);
+    expect(result.effectiveRate).toBe(0);
+  });
+
+  it('returns zero for negative earnings', () => {
+    const result = calculateSelfEmploymentTax(-5000);
+    expect(result.seTax).toBe(0);
+    expect(result.effectiveRate).toBe(0);
   });
 });
 
@@ -258,6 +301,44 @@ describe('calculateRenterToCommission', () => {
     );
   });
 
+  it('calculates self-employment tax on renter profit', () => {
+    expect(result.selfEmploymentTax).toBeGreaterThan(0);
+    // SE tax = currentTakeHome * 0.9235 * 0.153
+    const expectedSE = result.currentTakeHome * 0.9235 * 0.153;
+    expect(result.selfEmploymentTax).toBeCloseTo(expectedSE, 2);
+  });
+
+  it('calculates adjusted renter take-home after SE tax', () => {
+    expect(result.adjustedRenterTakeHome).toBeCloseTo(
+      result.currentTakeHome - result.selfEmploymentTax, 2
+    );
+  });
+
+  it('calculates adjusted difference accounting for SE tax', () => {
+    expect(result.adjustedDifference).toBeCloseTo(
+      result.commissionIncome - result.adjustedRenterTakeHome, 2
+    );
+    // Adjusted difference should be larger than raw difference (SE tax makes renting worse)
+    expect(result.adjustedDifference).toBeGreaterThan(result.difference);
+  });
+
+  it('returns salon benefits value and breakdown', () => {
+    expect(result.salonBenefitsValue).toBeGreaterThan(0);
+    expect(result.salonBenefitsBreakdown).toHaveLength(5);
+    // Sum of breakdown should equal total
+    const sum = result.salonBenefitsBreakdown.reduce((s, b) => s + b.amount, 0);
+    expect(sum).toBeCloseTo(result.salonBenefitsValue, 2);
+  });
+
+  it('calculates slow week comparison at 70% volume', () => {
+    expect(result.slowWeekComparison.renterTakeHome).toBeLessThan(result.currentTakeHome);
+    expect(result.slowWeekComparison.commissionTakeHome).toBeLessThan(result.commissionIncome);
+    // Commission cushions the downside better than renting (fixed costs hurt renters more)
+    const renterDrop = result.currentTakeHome - result.slowWeekComparison.renterTakeHome;
+    const commissionDrop = result.commissionIncome - result.slowWeekComparison.commissionTakeHome;
+    expect(renterDrop).toBeGreaterThan(commissionDrop);
+  });
+
   it('handles zero service income gracefully', () => {
     const zeroInputs = { ...defaultR2C, serviceIncome: 0 };
     const r = calculateRenterToCommission(zeroInputs);
@@ -266,6 +347,8 @@ describe('calculateRenterToCommission', () => {
     expect(r.effectiveRate).toBe(0);
     expect(r.tierBreakdown).toHaveLength(0);
     expect(r.totalIncome).toBe(32099);
+    expect(r.selfEmploymentTax).toBe(0);
+    expect(r.salonBenefitsBreakdown).toHaveLength(5);
   });
 });
 

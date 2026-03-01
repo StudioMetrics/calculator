@@ -21,6 +21,15 @@ function formatPercent(val) {
   return (val * 100).toFixed(2) + '%';
 }
 
+// ── Self-Employment Tax (1099 renters pay both halves of FICA) ──────
+
+function calculateSelfEmploymentTax(netEarnings) {
+  if (netEarnings <= 0) return { seTax: 0, effectiveRate: 0 };
+  const taxableBase = netEarnings * 0.9235;
+  const seTax = taxableBase * 0.153;
+  return { seTax, effectiveRate: seTax / netEarnings };
+}
+
 // ── Commission → Renter ─────────────────────────────────────────────
 
 function calculateCommissionToRenter(inputs) {
@@ -57,6 +66,19 @@ function calculateCommissionToRenter(inputs) {
   const maxRentWeekly =
     (currentTakeHome + totalCOGS - totalIncome * 0.9) / 52;
 
+  // Salon benefits breakdown (what the salon currently provides)
+  const salonBenefitsBreakdown = [
+    { label: 'Booth Rent', amount: yearlyRent },
+    { label: 'Color & Supplies', amount: stylistCogs },
+    { label: 'Marketing', amount: stylistMarketing },
+    { label: 'Credit Card Processing', amount: ccFees },
+    { label: 'Support Staff', amount: asstYearly },
+  ];
+  const salonBenefitsValue = salonBenefitsBreakdown.reduce((sum, b) => sum + b.amount, 0);
+
+  // Crossover retention %: the client-loss % where renting becomes worse
+  const crossoverRetention = ((totalIncome - totalCOGS - currentTakeHome) / totalIncome) * 100;
+
   return {
     totalIncome,
     commissionGross,
@@ -69,7 +91,10 @@ function calculateCommissionToRenter(inputs) {
     totalCOGS,
     scenarios,
     currentTakeHome,
-    maxRentWeekly
+    maxRentWeekly,
+    salonBenefitsValue,
+    salonBenefitsBreakdown,
+    crossoverRetention
   };
 }
 
@@ -144,6 +169,30 @@ function calculateRenterToCommission(inputs) {
   const commissionIncome = annualCommission + inputs.tips * 0.9;
   const difference = commissionIncome - currentTakeHome;
 
+  // Self-employment tax (renters are 1099 contractors)
+  const se = calculateSelfEmploymentTax(currentTakeHome);
+  const selfEmploymentTax = se.seTax;
+  const adjustedRenterTakeHome = currentTakeHome - selfEmploymentTax;
+  const adjustedDifference = commissionIncome - adjustedRenterTakeHome;
+
+  // Salon benefits breakdown (costs the salon covers under commission)
+  const salonBenefitsBreakdown = [
+    { label: 'Booth Rent', amount: currentRent },
+    { label: 'Color & Supplies', amount: stylistCogs },
+    { label: 'Marketing', amount: stylistMarketing },
+    { label: 'Credit Card Processing', amount: ccFees },
+    { label: 'Support Staff', amount: asstYearly },
+  ];
+  const salonBenefitsValue = salonBenefitsBreakdown.reduce((sum, b) => sum + b.amount, 0);
+
+  // Slow week comparison (70% volume)
+  const slowPct = 0.70;
+  const slowIncome = inputs.serviceIncome * slowPct + inputs.tips * slowPct;
+  const slowRenterTakeHome = slowIncome - totalExpenses;
+  const slowWeeklySales = inputs.serviceIncome * slowPct / 52;
+  const slowTiered = calculateTieredCommission(slowWeeklySales);
+  const slowCommissionIncome = slowTiered.grossCommission * 52 + inputs.tips * slowPct * 0.9;
+
   return {
     totalIncome,
     currentRent,
@@ -154,7 +203,16 @@ function calculateRenterToCommission(inputs) {
     effectiveRate: tiered.effectiveRate,
     tierBreakdown: tiered.tierBreakdown,
     commissionIncome,
-    difference
+    difference,
+    selfEmploymentTax,
+    adjustedRenterTakeHome,
+    adjustedDifference,
+    salonBenefitsValue,
+    salonBenefitsBreakdown,
+    slowWeekComparison: {
+      renterTakeHome: slowRenterTakeHome,
+      commissionTakeHome: slowCommissionIncome,
+    },
   };
 }
 
@@ -164,6 +222,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     formatCurrency,
     formatPercent,
+    calculateSelfEmploymentTax,
     calculateCommissionToRenter,
     calculateRenterToCommission,
     calculateTieredCommission,
