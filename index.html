@@ -87,9 +87,9 @@
     // Commission to Renter Calculator
     const CommissionToRenter = () => {
       const [inputs, setInputs] = usePersistedState('c2r-inputs', {
-        serviceIncome: 201965,
+        serviceIncome: 100000,
         tips: 32099,
-        commissionPct: 50,
+        startingRate: 40,
         weeklyRent: 525,
         assistantHourly: 20,
         assistantHours: 6,
@@ -140,9 +140,9 @@
                 <span className={helpClass}>Cash tips received</span>
               </div>
               <div className="flex flex-col">
-                <label className={labelClass}>Commission %</label>
-                <input type="number" className={inputClass} value={inputs.commissionPct} onChange={(e) => handleChange('commissionPct', e.target.value)} />
-                <span className={helpClass}>Current commission split</span>
+                <label className={labelClass}>Starting Commission Rate</label>
+                <input type="number" className={inputClass} min="40" max="50" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
+                <span className={helpClass}>Base rate for first bracket (40% default, up to 50% for senior stylists)</span>
               </div>
             </div>
           </div>
@@ -227,6 +227,38 @@
             <p className="text-xs text-stone-500 mt-2">You'd pay for all of these yourself as a renter, plus self-employment tax (~14%)</p>
           </div>
 
+          {/* Tier Breakdown */}
+          <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60 mb-8">
+            <h4 className="text-xs font-semibold text-stone-500 mb-3 uppercase tracking-wider">Weekly Commission Breakdown</h4>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-stone-500">Avg Weekly Sales</span>
+              <span className="text-sm font-semibold text-stone-700">{formatCurrency(calculations.avgWeeklySales)}</span>
+            </div>
+            {calculations.tierBreakdown.map((tier, i) => (
+              <div key={i} className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100 last:border-b-0">
+                <span className="text-sm text-stone-500">
+                  {tier.rangeLabel} <span className="text-stone-400">@ {(tier.rate * 100).toFixed(0)}%</span>
+                </span>
+                <span className="text-sm font-medium text-stone-700">
+                  {formatCurrency(tier.commission)}
+                  <span className="text-stone-400 text-xs ml-1">({formatCurrency(tier.amount)})</span>
+                </span>
+              </div>
+            ))}
+            <div className="bg-orange-50 border border-orange-200/60 rounded-lg p-4 mt-4">
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
+                <span className="text-sm text-stone-600">Effective Commission Rate</span>
+                <span className="text-xl sm:text-2xl font-bold text-orange-700">
+                  {(calculations.effectiveRate * 100).toFixed(1)}%
+                </span>
+              </div>
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1 mt-2">
+                <span className="text-sm text-stone-600">Annual Commission Gross</span>
+                <span className="text-lg font-bold text-orange-700">{formatCurrency(calculations.commissionGross)}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Results */}
           <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60">
             <h3 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Current vs Renter Comparison</h3>
@@ -291,8 +323,9 @@
     // Renter to Commission Calculator
     const RenterToCommission = () => {
       const [inputs, setInputs] = usePersistedState('r2c-inputs', {
-        serviceIncome: 201965,
+        serviceIncome: 100000,
         tips: 32099,
+        startingRate: 40,
         weeklyRent: 525,
         otherExpenses: 15000,
         assistantHourly: 20,
@@ -315,12 +348,14 @@
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
           {/* Hero Summary */}
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 mb-8">
-            <p className="text-sm font-medium text-emerald-800 mb-1">Your Annual Gain by Switching to Commission</p>
-            <p className="text-3xl sm:text-4xl font-bold text-emerald-700">
-              +{formatCurrency(calculations.adjustedDifference)}
+          <div className={`border rounded-xl p-5 mb-8 ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-stone-50 border-stone-200'}`}>
+            <p className={`text-sm font-medium mb-1 ${calculations.adjustedDifference >= 0 ? 'text-emerald-800' : 'text-stone-700'}`}>
+              {calculations.adjustedDifference >= 0 ? 'Annual Gain by Switching' : 'Annual Difference'}
             </p>
-            <p className="text-xs text-emerald-600 mt-1">After accounting for self-employment tax savings</p>
+            <p className={`text-3xl sm:text-4xl font-bold ${calculations.adjustedDifference >= 0 ? 'text-emerald-700' : 'text-stone-700'}`}>
+              {calculations.adjustedDifference >= 0 ? '+' : ''}{formatCurrency(calculations.adjustedDifference)}
+            </p>
+            <p className={`text-xs mt-1 ${calculations.adjustedDifference >= 0 ? 'text-emerald-600' : 'text-stone-500'}`}>After accounting for payroll taxes on both sides</p>
           </div>
 
           <div className="mb-8">
@@ -337,6 +372,13 @@
               <div className="flex flex-col">
                 <label className={labelClass}>Weekly Rent</label>
                 <CurrencyInput value={inputs.weeklyRent} onChange={(e) => handleChange('weeklyRent', e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div className="flex flex-col">
+                <label className={labelClass}>Starting Commission Rate</label>
+                <input type="number" className={inputClass} min="40" max="50" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
+                <span className={helpClass}>Base rate for first bracket (40% default, up to 50% for senior stylists)</span>
               </div>
             </div>
             <div className="flex flex-col">
@@ -361,13 +403,13 @@
                 <span className="text-sm text-stone-400 italic">Included</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-stone-700">&#10003; No Self-Employment Tax</span>
-                <span className="text-sm font-semibold text-emerald-600">Save {formatCurrency(calculations.selfEmploymentTax)}/yr</span>
+                <span className="text-sm text-stone-700">&#10003; Lower Payroll Taxes</span>
+                <span className="text-sm font-semibold text-emerald-600">Save {formatCurrency(calculations.seTaxPenalty)}/yr</span>
               </div>
             </div>
             <div className="mt-4 pt-3 border-t border-amber-200/60 flex flex-wrap justify-between items-baseline gap-x-4">
               <span className="text-sm font-semibold text-amber-800">Total Value of Benefits</span>
-              <span className="text-lg font-bold text-amber-700">{formatCurrency(calculations.salonBenefitsValue + calculations.selfEmploymentTax)}/yr</span>
+              <span className="text-lg font-bold text-amber-700">{formatCurrency(calculations.salonBenefitsValue + calculations.seTaxPenalty)}/yr</span>
             </div>
           </div>
 
@@ -425,11 +467,21 @@
               <span className="text-sm text-stone-500">Annual Commission Income (tiered)</span>
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.commissionIncome)}</span>
             </div>
-            <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-4 mt-3">
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-red-500">Commission FICA (7.65%)</span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.commissionFica)}</span>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
+              <span className="text-sm text-stone-500 font-medium">Actual Commission Take-Home</span>
+              <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.adjustedCommissionIncome)}</span>
+            </div>
+            <div className={`border rounded-lg p-4 mt-3 ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-200/60' : 'bg-stone-100 border-stone-200/60'}`}>
               <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className="text-sm font-medium text-emerald-800">Annual Gain by Switching</span>
-                <span className="text-xl sm:text-2xl font-bold text-emerald-700">
-                  +{formatCurrency(calculations.adjustedDifference)}
+                <span className={`text-sm font-medium ${calculations.adjustedDifference >= 0 ? 'text-emerald-800' : 'text-stone-700'}`}>
+                  {calculations.adjustedDifference >= 0 ? 'Annual Gain by Switching' : 'Annual Difference'}
+                </span>
+                <span className={`text-xl sm:text-2xl font-bold ${calculations.adjustedDifference >= 0 ? 'text-emerald-700' : 'text-stone-700'}`}>
+                  {calculations.adjustedDifference >= 0 ? '+' : ''}{formatCurrency(calculations.adjustedDifference)}
                 </span>
               </div>
             </div>

@@ -34,7 +34,11 @@ function calculateSelfEmploymentTax(netEarnings) {
 
 function calculateCommissionToRenter(inputs) {
   const totalIncome = inputs.serviceIncome + inputs.tips;
-  const commissionGross = inputs.serviceIncome * (inputs.commissionPct / 100);
+
+  // Tiered commission calculation
+  const avgWeeklySales = inputs.serviceIncome / 52;
+  const tiered = calculateTieredCommission(avgWeeklySales, (inputs.startingRate || 40) / 100);
+  const commissionGross = tiered.grossCommission * 52;
 
   // Stylist % of salon usage
   const usagePct = inputs.stylistHours / inputs.totalStylistHours;
@@ -62,9 +66,9 @@ function calculateCommissionToRenter(inputs) {
   });
 
   // Break-even rent: max weekly rent that matches current commission income
-  const currentTakeHome = commissionGross + inputs.tips * 0.9;
+  const currentTakeHome = commissionGross + inputs.tips;
   const maxRentWeekly =
-    (currentTakeHome + totalCOGS - totalIncome * 0.9) / 52;
+    (currentTakeHome + totalCOGS - totalIncome) / 52;
 
   // Salon benefits breakdown (what the salon currently provides)
   const salonBenefitsBreakdown = [
@@ -82,6 +86,9 @@ function calculateCommissionToRenter(inputs) {
   return {
     totalIncome,
     commissionGross,
+    avgWeeklySales,
+    effectiveRate: tiered.effectiveRate,
+    tierBreakdown: tiered.tierBreakdown,
     usagePct,
     yearlyRent,
     asstYearly,
@@ -108,7 +115,8 @@ const COMMISSION_TIERS = [
   { upTo: Infinity, rate: 0.60 }
 ];
 
-function calculateTieredCommission(weeklySales) {
+function calculateTieredCommission(weeklySales, startingRate = 0.40) {
+  const delta = startingRate - 0.40;
   let remaining = weeklySales;
   let grossCommission = 0;
   let prevCeiling = 0;
@@ -118,14 +126,15 @@ function calculateTieredCommission(weeklySales) {
     if (remaining <= 0) break;
     const bracketSize = tier.upTo - prevCeiling;
     const amount = Math.min(remaining, bracketSize);
-    const commission = amount * tier.rate;
+    const adjustedRate = Math.min(tier.rate + delta, 0.60);
+    const commission = amount * adjustedRate;
 
     const lowerLabel = prevCeiling === 0 ? '$0' : formatCurrency(prevCeiling + 1);
     const rangeLabel = tier.upTo === Infinity
       ? `${formatCurrency(prevCeiling + 1)}+`
       : `${lowerLabel} – ${formatCurrency(tier.upTo)}`;
 
-    tierBreakdown.push({ rangeLabel, amount, rate: tier.rate, commission });
+    tierBreakdown.push({ rangeLabel, amount, rate: adjustedRate, commission });
     grossCommission += commission;
     remaining -= amount;
     prevCeiling = tier.upTo;
@@ -164,16 +173,21 @@ function calculateRenterToCommission(inputs) {
 
   // Tiered commission calculation
   const avgWeeklySales = inputs.serviceIncome / 52;
-  const tiered = calculateTieredCommission(avgWeeklySales);
+  const tiered = calculateTieredCommission(avgWeeklySales, (inputs.startingRate || 40) / 100);
   const annualCommission = tiered.grossCommission * 52;
-  const commissionIncome = annualCommission + inputs.tips * 0.9;
+  const commissionIncome = annualCommission + inputs.tips;
   const difference = commissionIncome - currentTakeHome;
 
   // Self-employment tax (renters are 1099 contractors)
   const se = calculateSelfEmploymentTax(currentTakeHome);
   const selfEmploymentTax = se.seTax;
   const adjustedRenterTakeHome = currentTakeHome - selfEmploymentTax;
-  const adjustedDifference = commissionIncome - adjustedRenterTakeHome;
+
+  // Commission-side payroll tax (employer pays half, but employee share is 7.65%)
+  const commissionFica = commissionIncome * 0.0765;
+  const adjustedCommissionIncome = commissionIncome - commissionFica;
+  const adjustedDifference = adjustedCommissionIncome - adjustedRenterTakeHome;
+  const seTaxPenalty = selfEmploymentTax - commissionFica;
 
   // Salon benefits breakdown (costs the salon covers under commission)
   const salonBenefitsBreakdown = [
@@ -190,8 +204,8 @@ function calculateRenterToCommission(inputs) {
   const slowIncome = inputs.serviceIncome * slowPct + inputs.tips * slowPct;
   const slowRenterTakeHome = slowIncome - totalExpenses;
   const slowWeeklySales = inputs.serviceIncome * slowPct / 52;
-  const slowTiered = calculateTieredCommission(slowWeeklySales);
-  const slowCommissionIncome = slowTiered.grossCommission * 52 + inputs.tips * slowPct * 0.9;
+  const slowTiered = calculateTieredCommission(slowWeeklySales, (inputs.startingRate || 40) / 100);
+  const slowCommissionIncome = slowTiered.grossCommission * 52 + inputs.tips * slowPct;
 
   return {
     totalIncome,
@@ -205,8 +219,11 @@ function calculateRenterToCommission(inputs) {
     commissionIncome,
     difference,
     selfEmploymentTax,
+    commissionFica,
+    adjustedCommissionIncome,
     adjustedRenterTakeHome,
     adjustedDifference,
+    seTaxPenalty,
     salonBenefitsValue,
     salonBenefitsBreakdown,
     slowWeekComparison: {

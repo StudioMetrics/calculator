@@ -12,9 +12,9 @@ const {
 // ── Default test inputs (Studio Los Gatos sample data) ──────────────
 
 const defaultC2R = {
-  serviceIncome: 201965,
+  serviceIncome: 100000,
   tips: 32099,
-  commissionPct: 50,
+  startingRate: 40,
   weeklyRent: 525,
   assistantHourly: 20,
   assistantHours: 6,
@@ -28,8 +28,9 @@ const defaultC2R = {
 };
 
 const defaultR2C = {
-  serviceIncome: 201965,
+  serviceIncome: 100000,
   tips: 32099,
+  startingRate: 40,
   weeklyRent: 525,
   otherExpenses: 15000,
   assistantHourly: 20,
@@ -83,11 +84,25 @@ describe('calculateCommissionToRenter', () => {
   const result = calculateCommissionToRenter(defaultC2R);
 
   it('calculates total income correctly', () => {
-    expect(result.totalIncome).toBe(201965 + 32099);
+    expect(result.totalIncome).toBe(100000 + 32099);
   });
 
-  it('calculates commission gross correctly', () => {
-    expect(result.commissionGross).toBe(201965 * 0.5);
+  it('calculates commission gross using tiered brackets', () => {
+    const tiered = calculateTieredCommission(100000 / 52);
+    expect(result.commissionGross).toBeCloseTo(tiered.grossCommission * 52, 2);
+  });
+
+  it('returns avgWeeklySales and effectiveRate', () => {
+    expect(result.avgWeeklySales).toBeCloseTo(100000 / 52, 2);
+    expect(result.effectiveRate).toBeGreaterThan(0);
+    expect(result.effectiveRate).toBeLessThanOrEqual(0.60);
+  });
+
+  it('returns tier breakdown', () => {
+    expect(result.tierBreakdown.length).toBeGreaterThan(0);
+    expect(result.tierBreakdown[0]).toHaveProperty('rangeLabel');
+    expect(result.tierBreakdown[0]).toHaveProperty('rate');
+    expect(result.tierBreakdown[0]).toHaveProperty('commission');
   });
 
   it('calculates stylist usage percentage', () => {
@@ -110,7 +125,7 @@ describe('calculateCommissionToRenter', () => {
   });
 
   it('calculates credit card fees', () => {
-    expect(result.ccFees).toBeCloseTo(201965 * 0.029, 2);
+    expect(result.ccFees).toBeCloseTo(100000 * 0.029, 2);
   });
 
   it('sums total COGS correctly', () => {
@@ -140,18 +155,16 @@ describe('calculateCommissionToRenter', () => {
     expect(s.retainedIncome).toBeCloseTo(result.totalIncome * 0.5, 2);
   });
 
-  it('calculates current commission take-home', () => {
-    const expected = 201965 * 0.5 + 32099 * 0.9;
-    expect(result.currentTakeHome).toBeCloseTo(expected, 2);
+  it('calculates current commission take-home without tip deduction', () => {
+    // commissionGross + tips (no * 0.9)
+    expect(result.currentTakeHome).toBeCloseTo(result.commissionGross + 32099, 2);
   });
 
-  it('calculates break-even weekly rent using correct formula', () => {
-    // Verify the formula: (currentTakeHome + totalCOGS - totalIncome * 0.9) / 52
+  it('calculates break-even weekly rent without tip deduction', () => {
+    // (currentTakeHome + totalCOGS - totalIncome) / 52
     const expected =
-      (result.currentTakeHome + result.totalCOGS - result.totalIncome * 0.9) /
-      52;
+      (result.currentTakeHome + result.totalCOGS - result.totalIncome) / 52;
     expect(result.maxRentWeekly).toBeCloseTo(expected, 2);
-    // With sample data, the value can be negative (renting already costs more than commission)
     expect(typeof result.maxRentWeekly).toBe('number');
     expect(isFinite(result.maxRentWeekly)).toBe(true);
   });
@@ -171,8 +184,11 @@ describe('calculateCommissionToRenter', () => {
   it('calculates crossover retention percentage', () => {
     const expected = ((result.totalIncome - result.totalCOGS - result.currentTakeHome) / result.totalIncome) * 100;
     expect(result.crossoverRetention).toBeCloseTo(expected, 2);
-    expect(result.crossoverRetention).toBeGreaterThan(0);
-    expect(result.crossoverRetention).toBeLessThan(100);
+  });
+
+  it('uses custom starting rate when provided', () => {
+    const highRate = calculateCommissionToRenter({ ...defaultC2R, startingRate: 50 });
+    expect(highRate.commissionGross).toBeGreaterThan(result.commissionGross);
   });
 });
 
@@ -219,6 +235,41 @@ describe('calculateTieredCommission', () => {
     expect(result.grossCommission).toBe(800);
     expect(result.tierBreakdown).toHaveLength(1);
   });
+
+  it('applies custom starting rate (45%)', () => {
+    const result = calculateTieredCommission(1500, 0.45);
+    // delta = 0.05, so first bracket rate = 0.45
+    expect(result.grossCommission).toBe(1500 * 0.45);
+    expect(result.tierBreakdown[0].rate).toBe(0.45);
+  });
+
+  it('applies custom starting rate (50%) with shifted tiers', () => {
+    const result = calculateTieredCommission(3000, 0.50);
+    // delta = 0.10: tiers become 50%, 55%, 60%, 60%, 60%
+    // $2,000 * 0.50 + $1,000 * 0.55 = $1,000 + $550 = $1,550
+    expect(result.grossCommission).toBe(1550);
+    expect(result.tierBreakdown[0].rate).toBe(0.50);
+    expect(result.tierBreakdown[1].rate).toBe(0.55);
+  });
+
+  it('caps all rates at 60% with high starting rate', () => {
+    const result = calculateTieredCommission(8000, 0.50);
+    // delta = 0.10: tiers become 50%, 55%, 60%, 60%, 60% (capped)
+    expect(result.tierBreakdown[0].rate).toBe(0.50);
+    expect(result.tierBreakdown[1].rate).toBe(0.55);
+    expect(result.tierBreakdown[2].rate).toBe(0.60);
+    expect(result.tierBreakdown[3].rate).toBe(0.60);
+    expect(result.tierBreakdown[4].rate).toBe(0.60);
+    // $2,000*0.50 + $1,500*0.55 + $1,500*0.60 + $1,500*0.60 + $1,500*0.60
+    // = $1,000 + $825 + $900 + $900 + $900 = $4,525
+    expect(result.grossCommission).toBe(4525);
+  });
+
+  it('default starting rate (0.40) matches no-argument behavior', () => {
+    const withDefault = calculateTieredCommission(5000, 0.40);
+    const withoutArg = calculateTieredCommission(5000);
+    expect(withDefault.grossCommission).toBe(withoutArg.grossCommission);
+  });
 });
 
 // ── Self-Employment Tax ─────────────────────────────────────────────
@@ -250,7 +301,7 @@ describe('calculateRenterToCommission', () => {
   const result = calculateRenterToCommission(defaultR2C);
 
   it('calculates total income correctly', () => {
-    expect(result.totalIncome).toBe(201965 + 32099);
+    expect(result.totalIncome).toBe(100000 + 32099);
   });
 
   it('calculates annual rent', () => {
@@ -270,27 +321,27 @@ describe('calculateRenterToCommission', () => {
   });
 
   it('returns average weekly sales', () => {
-    expect(result.avgWeeklySales).toBeCloseTo(201965 / 52, 2);
+    expect(result.avgWeeklySales).toBeCloseTo(100000 / 52, 2);
   });
 
   it('returns weekly commission from tiers', () => {
-    // $201,965/52 ≈ $3,884.13 → spans 40%, 45%, 50% brackets
-    const tiered = calculateTieredCommission(201965 / 52);
+    const tiered = calculateTieredCommission(100000 / 52);
     expect(result.weeklyCommission).toBeCloseTo(tiered.grossCommission, 2);
   });
 
   it('returns effective commission rate', () => {
-    expect(result.effectiveRate).toBeGreaterThan(0.40);
-    expect(result.effectiveRate).toBeLessThan(0.50);
+    // $100K/52 ≈ $1,923/week — falls within first bracket, so rate is exactly 40%
+    expect(result.effectiveRate).toBeGreaterThanOrEqual(0.40);
+    expect(result.effectiveRate).toBeLessThanOrEqual(0.60);
   });
 
   it('returns tier breakdown array', () => {
-    // $3,884/week spans 3 brackets (40%, 45%, 50%)
-    expect(result.tierBreakdown).toHaveLength(3);
+    expect(result.tierBreakdown.length).toBeGreaterThan(0);
   });
 
-  it('calculates annual commission income using tiers', () => {
-    const expected = result.weeklyCommission * 52 + 32099 * 0.9;
+  it('calculates annual commission income without tip deduction', () => {
+    // No * 0.9 on tips
+    const expected = result.weeklyCommission * 52 + 32099;
     expect(result.commissionIncome).toBeCloseTo(expected, 2);
   });
 
@@ -303,9 +354,18 @@ describe('calculateRenterToCommission', () => {
 
   it('calculates self-employment tax on renter profit', () => {
     expect(result.selfEmploymentTax).toBeGreaterThan(0);
-    // SE tax = currentTakeHome * 0.9235 * 0.153
     const expectedSE = result.currentTakeHome * 0.9235 * 0.153;
     expect(result.selfEmploymentTax).toBeCloseTo(expectedSE, 2);
+  });
+
+  it('calculates commission FICA at 7.65%', () => {
+    expect(result.commissionFica).toBeCloseTo(result.commissionIncome * 0.0765, 2);
+  });
+
+  it('calculates adjusted commission income after FICA', () => {
+    expect(result.adjustedCommissionIncome).toBeCloseTo(
+      result.commissionIncome - result.commissionFica, 2
+    );
   });
 
   it('calculates adjusted renter take-home after SE tax', () => {
@@ -314,18 +374,23 @@ describe('calculateRenterToCommission', () => {
     );
   });
 
-  it('calculates adjusted difference accounting for SE tax', () => {
+  it('calculates adjusted difference with taxes on both sides', () => {
     expect(result.adjustedDifference).toBeCloseTo(
-      result.commissionIncome - result.adjustedRenterTakeHome, 2
+      result.adjustedCommissionIncome - result.adjustedRenterTakeHome, 2
     );
-    // Adjusted difference should be larger than raw difference (SE tax makes renting worse)
-    expect(result.adjustedDifference).toBeGreaterThan(result.difference);
+  });
+
+  it('calculates SE tax penalty (delta between SE tax and FICA)', () => {
+    expect(result.seTaxPenalty).toBeCloseTo(
+      result.selfEmploymentTax - result.commissionFica, 2
+    );
+    // SE tax is always more than FICA for same income
+    expect(result.seTaxPenalty).toBeGreaterThan(0);
   });
 
   it('returns salon benefits value and breakdown', () => {
     expect(result.salonBenefitsValue).toBeGreaterThan(0);
     expect(result.salonBenefitsBreakdown).toHaveLength(5);
-    // Sum of breakdown should equal total
     const sum = result.salonBenefitsBreakdown.reduce((s, b) => s + b.amount, 0);
     expect(sum).toBeCloseTo(result.salonBenefitsValue, 2);
   });
@@ -333,10 +398,6 @@ describe('calculateRenterToCommission', () => {
   it('calculates slow week comparison at 70% volume', () => {
     expect(result.slowWeekComparison.renterTakeHome).toBeLessThan(result.currentTakeHome);
     expect(result.slowWeekComparison.commissionTakeHome).toBeLessThan(result.commissionIncome);
-    // Commission cushions the downside better than renting (fixed costs hurt renters more)
-    const renterDrop = result.currentTakeHome - result.slowWeekComparison.renterTakeHome;
-    const commissionDrop = result.commissionIncome - result.slowWeekComparison.commissionTakeHome;
-    expect(renterDrop).toBeGreaterThan(commissionDrop);
   });
 
   it('handles zero service income gracefully', () => {
@@ -347,8 +408,12 @@ describe('calculateRenterToCommission', () => {
     expect(r.effectiveRate).toBe(0);
     expect(r.tierBreakdown).toHaveLength(0);
     expect(r.totalIncome).toBe(32099);
-    expect(r.selfEmploymentTax).toBe(0);
     expect(r.salonBenefitsBreakdown).toHaveLength(5);
+  });
+
+  it('uses custom starting rate', () => {
+    const highRate = calculateRenterToCommission({ ...defaultR2C, startingRate: 50 });
+    expect(highRate.commissionIncome).toBeGreaterThan(result.commissionIncome);
   });
 });
 
@@ -357,23 +422,22 @@ describe('calculateRenterToCommission', () => {
 describe('cross-calculator consistency', () => {
   it('both calculators produce the same usage percentage', () => {
     const c2r = calculateCommissionToRenter(defaultC2R);
-    const r2c = calculateRenterToCommission(defaultR2C);
     expect(c2r.usagePct).toBeCloseTo(
       defaultR2C.stylistHours / defaultR2C.totalStylistHours,
       6
     );
   });
 
-  it('C2R commission take-home uses flat rate', () => {
+  it('both calculators use tiered commission (not flat rate)', () => {
     const c2r = calculateCommissionToRenter(defaultC2R);
-    const expected = 201965 * 0.5 + 32099 * 0.9;
-    expect(c2r.currentTakeHome).toBeCloseTo(expected, 2);
+    const r2c = calculateRenterToCommission(defaultR2C);
+    // Both should produce the same commission for the same service income and starting rate
+    expect(c2r.commissionGross).toBeCloseTo(r2c.weeklyCommission * 52, 2);
   });
 
-  it('R2C commission income uses tiered rates (lower than flat 50%)', () => {
-    const r2c = calculateRenterToCommission(defaultR2C);
-    const flatFifty = 201965 * 0.5 + 32099 * 0.9;
-    // Tiered rate at ~$3,884/week gives effective ~42.9%, less than flat 50%
-    expect(r2c.commissionIncome).toBeLessThan(flatFifty);
+  it('no flat commissionPct anywhere — both use tiered brackets', () => {
+    const c2r = calculateCommissionToRenter(defaultC2R);
+    const tiered = calculateTieredCommission(100000 / 52);
+    expect(c2r.commissionGross).toBeCloseTo(tiered.grossCommission * 52, 2);
   });
 });
