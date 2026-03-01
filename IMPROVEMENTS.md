@@ -17,3 +17,7 @@ When we are ready to iterate on this calculator, we can feed the following promp
 ## 4. State Persistence (Optional)
 **Prompt for Claude Code:**
 > "Add local storage persistence to the React state so that if the stylist refreshes the page or accidentally closes their browser tab, their entered financial values are saved and reloaded automatically."
+
+## 5. Direct Linking to Tabs
+**Prompt for Claude Code:**
+> "Update the React calculator `index.html` to support URL hash routing or query parameters. The goal is to allow linking directly to a specific tab, for example `index.html#renter-to-commission`, so that when the page loads, the 'Renter → Commission' tab is active by default instead of the default 'Commission → Renter' tab."
