@@ -7,6 +7,7 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="calculator.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -173,20 +174,8 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    // Utility for currency formatting
-    const formatCurrency = (val) => {
-      if (val === null || val === undefined || isNaN(val)) return '$0.00';
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0
-      }).format(val);
-    };
-
-    const formatPercent = (val) => {
-      if (val === null || val === undefined || isNaN(val)) return '0%';
-      return (val * 100).toFixed(2) + '%';
-    };
+    // Core math & formatting loaded from calculator.js
+    // (formatCurrency, formatPercent, calculateCommissionToRenter, calculateRenterToCommission)
 
     // Commission to Renter Calculator
     const CommissionToRenter = () => {
@@ -210,49 +199,7 @@
         setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
       };
 
-      const calculations = useMemo(() => {
-        const totalIncome = inputs.serviceIncome + inputs.tips;
-        const commissionGross = inputs.serviceIncome * (inputs.commissionPct / 100);
-        
-        // Stylist % of salon usage
-        const usagePct = inputs.stylistHours / inputs.totalStylistHours;
-        
-        // COGS calculations
-        const yearlyRent = inputs.weeklyRent * 52;
-        const asstWeekly = inputs.assistantHourly * inputs.assistantHours * inputs.assistantDays * (1 + inputs.asstTaxPct / 100);
-        const asstYearly = asstWeekly * 52;
-        const stylistCogs = usagePct * inputs.salonCogs;
-        const ccFees = inputs.serviceIncome * (inputs.ccFeePct / 100);
-        const stylistMarketing = usagePct * inputs.salonMarketing;
-        
-        const totalCOGS = yearlyRent + stylistCogs + ccFees + stylistMarketing + asstYearly;
-        
-        // Take home scenarios
-        const scenarios = [0, 10, 20, 30, 40, 50].map(retention => {
-          const retainedIncome = totalIncome * (1 - retention / 100);
-          const takeHome = retainedIncome - totalCOGS;
-          return { retention, takeHome, retainedIncome };
-        });
-
-        // Break-even rent calculation
-        const currentTakeHome = commissionGross + inputs.tips * 0.9; // Assume keep 90% of tips
-        const maxRentWeekly = (currentTakeHome + totalCOGS - totalIncome * 0.9) / 52;
-
-        return {
-          totalIncome,
-          commissionGross,
-          usagePct,
-          yearlyRent,
-          asstYearly,
-          stylistCogs,
-          ccFees,
-          stylistMarketing,
-          totalCOGS,
-          scenarios,
-          currentTakeHome,
-          maxRentWeekly
-        };
-      }, [inputs]);
+      const calculations = useMemo(() => calculateCommissionToRenter(inputs), [inputs]);
 
       return (
         <div className="card">
@@ -467,41 +414,7 @@
         setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
       };
 
-      const calculations = useMemo(() => {
-        const totalIncome = inputs.serviceIncome + inputs.tips;
-        const currentRent = inputs.weeklyRent * 52;
-        const usagePct = inputs.stylistHours / inputs.totalStylistHours;
-        
-        // Current renter expenses
-        const asstWeekly = inputs.assistantHourly * inputs.assistantHours * inputs.assistantDays * (1 + inputs.asstTaxPct / 100);
-        const asstYearly = asstWeekly * 52;
-        const stylistCogs = usagePct * inputs.salonCogs;
-        const ccFees = inputs.serviceIncome * (inputs.ccFeePct / 100);
-        const stylistMarketing = usagePct * inputs.salonMarketing;
-        
-        const totalExpenses = currentRent + asstYearly + stylistCogs + ccFees + stylistMarketing + inputs.otherExpenses;
-        const currentTakeHome = totalIncome - totalExpenses;
-        
-        // What commission % needed to match?
-        // commissionIncome = serviceIncome * (commissionPct/100) + tips * 0.9
-        // We want: commissionIncome = currentTakeHome
-        // commissionPct = (currentTakeHome - tips * 0.9) / serviceIncome * 100
-        const requiredCommission = ((currentTakeHome - inputs.tips * 0.9) / inputs.serviceIncome) * 100;
-        
-        // With desired commission, what income?
-        const commissionIncome = inputs.serviceIncome * (inputs.desiredCommission / 100) + inputs.tips * 0.9;
-        const difference = commissionIncome - currentTakeHome;
-
-        return {
-          totalIncome,
-          currentRent,
-          totalExpenses,
-          currentTakeHome,
-          requiredCommission,
-          commissionIncome,
-          difference
-        };
-      }, [inputs]);
+      const calculations = useMemo(() => calculateRenterToCommission(inputs), [inputs]);
 
       return (
         <div className="card">

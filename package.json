@@ -1,0 +1,13 @@
+{
+  "name": "studio-metrics-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Commission vs Renter calculator for salon stylists",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}
