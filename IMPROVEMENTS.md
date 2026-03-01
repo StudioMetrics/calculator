@@ -21,3 +21,7 @@ When we are ready to iterate on this calculator, we can feed the following promp
 ## 5. Direct Linking to Tabs
 **Prompt for Claude Code:**
 > "Update the React calculator `index.html` to support URL hash routing or query parameters. The goal is to allow linking directly to a specific tab, for example `index.html#renter-to-commission`, so that when the page loads, the 'Renter → Commission' tab is active by default instead of the default 'Commission → Renter' tab."
+
+## 6. Extract Math Logic & Add Tests
+**Prompt for Claude Code:**
+> "Extract all the core financial calculation logic out of `index.html` into a separate pure JavaScript/TypeScript file (e.g., `calculator.js` or `calculator.ts`). Then, set up a simple testing framework (like Vitest or Jest) and write unit tests to verify the correctness of the Commission -> Renter and Renter -> Commission math, ensuring our proportional COGS allocations and retention formulas are pixel-perfect. Update `index.html` to import and use the separated logic."
