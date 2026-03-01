@@ -177,6 +177,20 @@
     // Core math & formatting loaded from calculator.js
     // (formatCurrency, formatPercent, calculateCommissionToRenter, calculateRenterToCommission)
 
+    // Persist state in localStorage so values survive refresh / tab close
+    const usePersistedState = (key, defaultValue) => {
+      const [state, setState] = useState(() => {
+        try {
+          const saved = localStorage.getItem(key);
+          return saved ? JSON.parse(saved) : defaultValue;
+        } catch { return defaultValue; }
+      });
+      useEffect(() => {
+        localStorage.setItem(key, JSON.stringify(state));
+      }, [key, state]);
+      return [state, setState];
+    };
+
     // Currency input: shows "$1,234" when blurred, raw number when editing
     const CurrencyInput = ({ value, onChange, ...props }) => {
       const [focused, setFocused] = useState(false);
@@ -195,7 +209,7 @@
 
     // Commission to Renter Calculator
     const CommissionToRenter = () => {
-      const [inputs, setInputs] = useState({
+      const [inputs, setInputs] = usePersistedState('c2r-inputs', {
         serviceIncome: 201965,
         tips: 32099,
         commissionPct: 50,
@@ -403,7 +417,7 @@
 
     // Renter to Commission Calculator
     const RenterToCommission = () => {
-      const [inputs, setInputs] = useState({
+      const [inputs, setInputs] = usePersistedState('r2c-inputs', {
         serviceIncome: 201965,
         tips: 32099,
         weeklyRent: 525,
