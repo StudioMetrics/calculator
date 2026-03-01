@@ -73,6 +73,43 @@ function calculateCommissionToRenter(inputs) {
   };
 }
 
+// ── Tiered Commission (weekly marginal brackets) ────────────────────
+
+const COMMISSION_TIERS = [
+  { upTo: 2000, rate: 0.40 },
+  { upTo: 3500, rate: 0.45 },
+  { upTo: 5000, rate: 0.50 },
+  { upTo: 6500, rate: 0.55 },
+  { upTo: Infinity, rate: 0.60 }
+];
+
+function calculateTieredCommission(weeklySales) {
+  let remaining = weeklySales;
+  let grossCommission = 0;
+  let prevCeiling = 0;
+  const tierBreakdown = [];
+
+  for (const tier of COMMISSION_TIERS) {
+    if (remaining <= 0) break;
+    const bracketSize = tier.upTo - prevCeiling;
+    const amount = Math.min(remaining, bracketSize);
+    const commission = amount * tier.rate;
+
+    const lowerLabel = prevCeiling === 0 ? '$0' : formatCurrency(prevCeiling + 1);
+    const rangeLabel = tier.upTo === Infinity
+      ? `${formatCurrency(prevCeiling + 1)}+`
+      : `${lowerLabel} – ${formatCurrency(tier.upTo)}`;
+
+    tierBreakdown.push({ rangeLabel, amount, rate: tier.rate, commission });
+    grossCommission += commission;
+    remaining -= amount;
+    prevCeiling = tier.upTo;
+  }
+
+  const effectiveRate = weeklySales > 0 ? grossCommission / weeklySales : 0;
+  return { grossCommission, effectiveRate, tierBreakdown };
+}
+
 // ── Renter → Commission ─────────────────────────────────────────────
 
 function calculateRenterToCommission(inputs) {
@@ -100,14 +137,11 @@ function calculateRenterToCommission(inputs) {
     inputs.otherExpenses;
   const currentTakeHome = totalIncome - totalExpenses;
 
-  // Required commission % to match current renter take-home
-  const requiredCommission =
-    ((currentTakeHome - inputs.tips * 0.9) / inputs.serviceIncome) * 100;
-
-  // Income at desired commission rate
-  const commissionIncome =
-    inputs.serviceIncome * (inputs.desiredCommission / 100) +
-    inputs.tips * 0.9;
+  // Tiered commission calculation
+  const avgWeeklySales = inputs.serviceIncome / 52;
+  const tiered = calculateTieredCommission(avgWeeklySales);
+  const annualCommission = tiered.grossCommission * 52;
+  const commissionIncome = annualCommission + inputs.tips * 0.9;
   const difference = commissionIncome - currentTakeHome;
 
   return {
@@ -115,7 +149,10 @@ function calculateRenterToCommission(inputs) {
     currentRent,
     totalExpenses,
     currentTakeHome,
-    requiredCommission,
+    avgWeeklySales,
+    weeklyCommission: tiered.grossCommission,
+    effectiveRate: tiered.effectiveRate,
+    tierBreakdown: tiered.tierBreakdown,
     commissionIncome,
     difference
   };
@@ -128,6 +165,8 @@ if (typeof module !== 'undefined' && module.exports) {
     formatCurrency,
     formatPercent,
     calculateCommissionToRenter,
-    calculateRenterToCommission
+    calculateRenterToCommission,
+    calculateTieredCommission,
+    COMMISSION_TIERS
   };
 }

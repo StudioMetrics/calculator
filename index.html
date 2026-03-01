@@ -244,7 +244,6 @@
         tips: 32099,
         weeklyRent: 525,
         otherExpenses: 15000,
-        desiredCommission: 50,
         assistantHourly: 20,
         assistantHours: 6,
         assistantDays: 4,
@@ -280,17 +279,10 @@
                 <CurrencyInput value={inputs.weeklyRent} onChange={(e) => handleChange('weeklyRent', e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex flex-col">
-                <label className={labelClass}>Other Expenses</label>
-                <CurrencyInput value={inputs.otherExpenses} onChange={(e) => handleChange('otherExpenses', e.target.value)} />
-                <span className={helpClass}>Insurance, supplies, etc.</span>
-              </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Test Commission %</label>
-                <input type="number" className={inputClass} value={inputs.desiredCommission} onChange={(e) => handleChange('desiredCommission', e.target.value)} />
-                <span className={helpClass}>Compare this commission rate</span>
-              </div>
+            <div className="flex flex-col">
+              <label className={labelClass}>Expenses Other Than Rent</label>
+              <CurrencyInput value={inputs.otherExpenses} onChange={(e) => handleChange('otherExpenses', e.target.value)} />
+              <span className={helpClass}>Insurance, supplies, etc.</span>
             </div>
           </div>
 
@@ -303,17 +295,41 @@
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.currentTakeHome)}</span>
             </div>
 
+            {/* Tier Breakdown */}
+            <div className="mt-5">
+              <h4 className="text-xs font-semibold text-stone-500 mb-3 uppercase tracking-wider">Weekly Commission Breakdown</h4>
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+                <span className="text-sm text-stone-500">Avg Weekly Sales</span>
+                <span className="text-sm font-semibold text-stone-700">{formatCurrency(calculations.avgWeeklySales)}</span>
+              </div>
+              {calculations.tierBreakdown.map((tier, i) => (
+                <div key={i} className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100 last:border-b-0">
+                  <span className="text-sm text-stone-500">
+                    {tier.rangeLabel} <span className="text-stone-400">@ {(tier.rate * 100).toFixed(0)}%</span>
+                  </span>
+                  <span className="text-sm font-medium text-stone-700">
+                    {formatCurrency(tier.commission)}
+                    <span className="text-stone-400 text-xs ml-1">({formatCurrency(tier.amount)})</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+
             <div className="bg-orange-50 border border-orange-200/60 rounded-lg p-4 mt-4">
               <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className="text-sm text-stone-600">Required Commission % to Match</span>
+                <span className="text-sm text-stone-600">Effective Commission Rate</span>
                 <span className="text-xl sm:text-2xl font-bold text-orange-700">
-                  {calculations.requiredCommission.toFixed(1)}%
+                  {(calculations.effectiveRate * 100).toFixed(1)}%
                 </span>
+              </div>
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1 mt-2">
+                <span className="text-sm text-stone-600">Weekly Gross Commission</span>
+                <span className="text-lg font-bold text-orange-700">{formatCurrency(calculations.weeklyCommission)}</span>
               </div>
             </div>
 
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 mt-3 border-b border-stone-200">
-              <span className="text-sm text-stone-500">Income at {inputs.desiredCommission}% commission</span>
+              <span className="text-sm text-stone-500">Annual Commission Income (tiered)</span>
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.commissionIncome)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">

@@ -4,7 +4,8 @@ const {
   formatCurrency,
   formatPercent,
   calculateCommissionToRenter,
-  calculateRenterToCommission
+  calculateRenterToCommission,
+  calculateTieredCommission
 } = require('./calculator');
 
 // ── Default test inputs (Studio Los Gatos sample data) ──────────────
@@ -30,7 +31,6 @@ const defaultR2C = {
   tips: 32099,
   weeklyRent: 525,
   otherExpenses: 15000,
-  desiredCommission: 50,
   assistantHourly: 20,
   assistantHours: 6,
   assistantDays: 4,
@@ -156,6 +156,51 @@ describe('calculateCommissionToRenter', () => {
   });
 });
 
+// ── Tiered Commission ───────────────────────────────────────────────
+
+describe('calculateTieredCommission', () => {
+  it('calculates commission fully within 40% bracket', () => {
+    const result = calculateTieredCommission(1500);
+    expect(result.grossCommission).toBe(600); // 1500 * 0.40
+    expect(result.effectiveRate).toBeCloseTo(0.40, 4);
+    expect(result.tierBreakdown).toHaveLength(1);
+    expect(result.tierBreakdown[0].rate).toBe(0.40);
+    expect(result.tierBreakdown[0].amount).toBe(1500);
+  });
+
+  it('calculates commission spanning 40% and 45% brackets', () => {
+    const result = calculateTieredCommission(3000);
+    // $2,000 * 0.40 + $1,000 * 0.45 = $800 + $450 = $1,250
+    expect(result.grossCommission).toBe(1250);
+    expect(result.effectiveRate).toBeCloseTo(1250 / 3000, 4);
+    expect(result.tierBreakdown).toHaveLength(2);
+    expect(result.tierBreakdown[0].commission).toBe(800);
+    expect(result.tierBreakdown[1].commission).toBe(450);
+  });
+
+  it('calculates commission spanning all 5 brackets', () => {
+    const result = calculateTieredCommission(8000);
+    // $2,000*0.40 + $1,500*0.45 + $1,500*0.50 + $1,500*0.55 + $1,500*0.60
+    // = $800 + $675 + $750 + $825 + $900 = $3,950
+    expect(result.grossCommission).toBe(3950);
+    expect(result.effectiveRate).toBeCloseTo(3950 / 8000, 4);
+    expect(result.tierBreakdown).toHaveLength(5);
+  });
+
+  it('returns zero for zero sales', () => {
+    const result = calculateTieredCommission(0);
+    expect(result.grossCommission).toBe(0);
+    expect(result.effectiveRate).toBe(0);
+    expect(result.tierBreakdown).toHaveLength(0);
+  });
+
+  it('handles exact bracket boundary ($2,000)', () => {
+    const result = calculateTieredCommission(2000);
+    expect(result.grossCommission).toBe(800);
+    expect(result.tierBreakdown).toHaveLength(1);
+  });
+});
+
 // ── Renter → Commission ─────────────────────────────────────────────
 
 describe('calculateRenterToCommission', () => {
@@ -171,7 +216,6 @@ describe('calculateRenterToCommission', () => {
 
   it('sums total expenses correctly', () => {
     expect(result.totalExpenses).toBeGreaterThan(0);
-    // totalExpenses includes rent + assistant + cogs + cc + marketing + other
     expect(result.totalExpenses).toBeGreaterThan(result.currentRent);
   });
 
@@ -182,15 +226,28 @@ describe('calculateRenterToCommission', () => {
     );
   });
 
-  it('calculates required commission percentage', () => {
-    // requiredCommission = (currentTakeHome - tips * 0.9) / serviceIncome * 100
-    const expected =
-      ((result.currentTakeHome - 32099 * 0.9) / 201965) * 100;
-    expect(result.requiredCommission).toBeCloseTo(expected, 2);
+  it('returns average weekly sales', () => {
+    expect(result.avgWeeklySales).toBeCloseTo(201965 / 52, 2);
   });
 
-  it('calculates income at desired commission rate', () => {
-    const expected = 201965 * 0.5 + 32099 * 0.9;
+  it('returns weekly commission from tiers', () => {
+    // $201,965/52 ≈ $3,884.13 → spans 40%, 45%, 50% brackets
+    const tiered = calculateTieredCommission(201965 / 52);
+    expect(result.weeklyCommission).toBeCloseTo(tiered.grossCommission, 2);
+  });
+
+  it('returns effective commission rate', () => {
+    expect(result.effectiveRate).toBeGreaterThan(0.40);
+    expect(result.effectiveRate).toBeLessThan(0.50);
+  });
+
+  it('returns tier breakdown array', () => {
+    // $3,884/week spans 3 brackets (40%, 45%, 50%)
+    expect(result.tierBreakdown).toHaveLength(3);
+  });
+
+  it('calculates annual commission income using tiers', () => {
+    const expected = result.weeklyCommission * 52 + 32099 * 0.9;
     expect(result.commissionIncome).toBeCloseTo(expected, 2);
   });
 
@@ -204,8 +261,10 @@ describe('calculateRenterToCommission', () => {
   it('handles zero service income gracefully', () => {
     const zeroInputs = { ...defaultR2C, serviceIncome: 0 };
     const r = calculateRenterToCommission(zeroInputs);
-    // Division by zero → Infinity or -Infinity, not a crash
-    expect(isFinite(r.requiredCommission)).toBe(false);
+    expect(r.avgWeeklySales).toBe(0);
+    expect(r.weeklyCommission).toBe(0);
+    expect(r.effectiveRate).toBe(0);
+    expect(r.tierBreakdown).toHaveLength(0);
     expect(r.totalIncome).toBe(32099);
   });
 });
@@ -222,12 +281,16 @@ describe('cross-calculator consistency', () => {
     );
   });
 
-  it('commission take-home matches across calculators with same inputs', () => {
+  it('C2R commission take-home uses flat rate', () => {
     const c2r = calculateCommissionToRenter(defaultC2R);
-    const r2c = calculateRenterToCommission(defaultR2C);
-    // Both should agree on commissionIncome = serviceIncome * 50% + tips * 90%
     const expected = 201965 * 0.5 + 32099 * 0.9;
     expect(c2r.currentTakeHome).toBeCloseTo(expected, 2);
-    expect(r2c.commissionIncome).toBeCloseTo(expected, 2);
+  });
+
+  it('R2C commission income uses tiered rates (lower than flat 50%)', () => {
+    const r2c = calculateRenterToCommission(defaultR2C);
+    const flatFifty = 201965 * 0.5 + 32099 * 0.9;
+    // Tiered rate at ~$3,884/week gives effective ~42.9%, less than flat 50%
+    expect(r2c.commissionIncome).toBeLessThan(flatFifty);
   });
 });
