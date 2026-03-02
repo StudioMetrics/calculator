@@ -40,9 +40,6 @@ function calculateCommissionToRenter(inputs) {
   const tiered = calculateTieredCommission(avgWeeklySales, (inputs.startingRate || 40) / 100);
   const commissionGross = tiered.grossCommission * 52;
 
-  // Stylist % of salon usage
-  const usagePct = inputs.stylistHours / inputs.totalStylistHours;
-
   // COGS calculations
   const yearlyRent = inputs.weeklyRent * 52;
   const asstWeekly =
@@ -51,12 +48,12 @@ function calculateCommissionToRenter(inputs) {
     inputs.assistantDays *
     (1 + inputs.asstTaxPct / 100);
   const asstYearly = asstWeekly * 52;
-  const stylistCogs = usagePct * inputs.salonCogs;
-  const ccFees = inputs.serviceIncome * (inputs.ccFeePct / 100);
-  const stylistMarketing = usagePct * inputs.salonMarketing;
+  const colorSupplies = inputs.colorSupplies || 0;
+  const ccFees = (inputs.serviceIncome + inputs.tips) * (inputs.ccFeePct / 100);
+  const marketing = inputs.marketing || 0;
 
   const totalCOGS =
-    yearlyRent + stylistCogs + ccFees + stylistMarketing + asstYearly;
+    yearlyRent + colorSupplies + ccFees + marketing + asstYearly;
 
   // Take-home scenarios at various client-retention rates
   const scenarios = [0, 10, 20, 30, 40, 50].map((retention) => {
@@ -73,8 +70,8 @@ function calculateCommissionToRenter(inputs) {
   // Salon benefits breakdown (what the salon currently provides)
   const salonBenefitsBreakdown = [
     { label: 'Booth Rent', amount: yearlyRent },
-    { label: 'Color & Supplies', amount: stylistCogs },
-    { label: 'Marketing', amount: stylistMarketing },
+    { label: 'Color & Supplies', amount: colorSupplies },
+    { label: 'Marketing', amount: marketing },
     { label: 'Credit Card Processing', amount: ccFees },
     { label: 'Support Staff', amount: asstYearly },
   ];
@@ -89,12 +86,11 @@ function calculateCommissionToRenter(inputs) {
     avgWeeklySales,
     effectiveRate: tiered.effectiveRate,
     tierBreakdown: tiered.tierBreakdown,
-    usagePct,
     yearlyRent,
     asstYearly,
-    stylistCogs,
+    colorSupplies,
     ccFees,
-    stylistMarketing,
+    marketing,
     totalCOGS,
     scenarios,
     currentTakeHome,
@@ -123,9 +119,8 @@ function calculateTieredCommission(weeklySales, startingRate = 0.40) {
   const tierBreakdown = [];
 
   for (const tier of COMMISSION_TIERS) {
-    if (remaining <= 0) break;
-    const bracketSize = tier.upTo - prevCeiling;
-    const amount = Math.min(remaining, bracketSize);
+    const bracketSize = tier.upTo === Infinity ? Infinity : tier.upTo - prevCeiling;
+    const amount = remaining > 0 ? Math.min(remaining, bracketSize) : 0;
     const adjustedRate = Math.min(tier.rate + delta, 0.60);
     const commission = amount * adjustedRate;
 
@@ -149,26 +144,20 @@ function calculateTieredCommission(weeklySales, startingRate = 0.40) {
 function calculateRenterToCommission(inputs) {
   const totalIncome = inputs.serviceIncome + inputs.tips;
   const currentRent = inputs.weeklyRent * 52;
-  const usagePct = inputs.stylistHours / inputs.totalStylistHours;
 
   // Current renter expenses
-  const asstWeekly =
-    inputs.assistantHourly *
-    inputs.assistantHours *
-    inputs.assistantDays *
-    (1 + inputs.asstTaxPct / 100);
-  const asstYearly = asstWeekly * 52;
-  const stylistCogs = usagePct * inputs.salonCogs;
-  const ccFees = inputs.serviceIncome * (inputs.ccFeePct / 100);
-  const stylistMarketing = usagePct * inputs.salonMarketing;
+  const colorSupplies = inputs.colorSupplies || 0;
+  const ccFees = (inputs.serviceIncome + inputs.tips) * (inputs.ccFeePct / 100);
+  const marketing = inputs.marketing || 0;
+  const laundry = inputs.laundry || 0;
 
   const totalExpenses =
     currentRent +
-    asstYearly +
-    stylistCogs +
+    colorSupplies +
     ccFees +
-    stylistMarketing +
-    inputs.otherExpenses;
+    marketing +
+    laundry +
+    (inputs.otherExpenses || 0);
   const currentTakeHome = totalIncome - totalExpenses;
 
   // Tiered commission calculation
@@ -192,20 +181,13 @@ function calculateRenterToCommission(inputs) {
   // Salon benefits breakdown (costs the salon covers under commission)
   const salonBenefitsBreakdown = [
     { label: 'Booth Rent', amount: currentRent },
-    { label: 'Color & Supplies', amount: stylistCogs },
-    { label: 'Marketing', amount: stylistMarketing },
+    { label: 'Color & Supplies', amount: colorSupplies },
+    { label: 'Marketing', amount: marketing },
+    { label: 'Laundry', amount: laundry },
     { label: 'Credit Card Processing', amount: ccFees },
-    { label: 'Support Staff', amount: asstYearly },
   ];
   const salonBenefitsValue = salonBenefitsBreakdown.reduce((sum, b) => sum + b.amount, 0);
 
-  // Slow week comparison (70% volume)
-  const slowPct = 0.70;
-  const slowIncome = inputs.serviceIncome * slowPct + inputs.tips * slowPct;
-  const slowRenterTakeHome = slowIncome - totalExpenses;
-  const slowWeeklySales = inputs.serviceIncome * slowPct / 52;
-  const slowTiered = calculateTieredCommission(slowWeeklySales, (inputs.startingRate || 40) / 100);
-  const slowCommissionIncome = slowTiered.grossCommission * 52 + inputs.tips * slowPct;
 
   return {
     totalIncome,
@@ -226,11 +208,7 @@ function calculateRenterToCommission(inputs) {
     seTaxPenalty,
     salonBenefitsValue,
     salonBenefitsBreakdown,
-    slowWeekComparison: {
-      renterTakeHome: slowRenterTakeHome,
-      commissionTakeHome: slowCommissionIncome,
-    },
-  };
+};
 }
 
 // ── Exports (Node / ES-module) & browser global ─────────────────────

@@ -84,15 +84,43 @@
     const labelClass = "text-xs font-semibold text-stone-500 mb-1 uppercase tracking-wider";
     const helpClass = "text-xs text-stone-400 mt-1";
 
+    // Rent toggle: lets user enter weekly or yearly, stores weekly internally
+    const RentInput = ({ weeklyRent, onChange, helpClass }) => {
+      const [mode, setMode] = useState('weekly');
+      const displayValue = mode === 'weekly' ? weeklyRent : Math.round(weeklyRent * 52);
+      const helperText = mode === 'weekly'
+        ? `${formatCurrency(weeklyRent * 52)}/yr`
+        : `${formatCurrency(weeklyRent)}/wk`;
+
+      const handleRentChange = (e) => {
+        const raw = parseFloat(e.target.value) || 0;
+        onChange(mode === 'weekly' ? raw : raw / 52);
+      };
+
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Booth Rent</label>
+            <div className="flex rounded-md overflow-hidden border border-stone-300 text-[11px]">
+              <button type="button" onClick={() => setMode('weekly')} className={`px-2 py-0.5 font-medium transition-colors ${mode === 'weekly' ? 'bg-amber-500 text-white' : 'bg-stone-50 text-stone-500 hover:bg-stone-100'}`}>Weekly</button>
+              <button type="button" onClick={() => setMode('yearly')} className={`px-2 py-0.5 font-medium transition-colors ${mode === 'yearly' ? 'bg-amber-500 text-white' : 'bg-stone-50 text-stone-500 hover:bg-stone-100'}`}>Yearly</button>
+            </div>
+          </div>
+          <CurrencyInput value={displayValue} onChange={handleRentChange} />
+          <span className={helpClass}>{helperText}</span>
+        </div>
+      );
+    };
+
     // Commission to Renter Calculator
     const CommissionToRenter = () => {
       const [inputs, setInputs] = usePersistedState('c2r-inputs', {
         serviceIncome: 100000,
-        tips: 32099,
+        tips: 18000,
         startingRate: 40,
         weeklyRent: 525,
         colorSupplies: 10125,
-        marketing: 3500,
+        marketing: 1200,
         assistantHourly: 20,
         assistantHours: 6,
         assistantDays: 4,
@@ -128,12 +156,12 @@
             <h3 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Income</h3>
             <div className="grid grid-cols-1 gap-4">
               <div className="flex flex-col">
-                <label className={labelClass}>Annual Service Income</label>
+                <label className={labelClass}>Yearly Service Income</label>
                 <CurrencyInput value={inputs.serviceIncome} onChange={(e) => handleChange('serviceIncome', e.target.value)} />
                 <span className={helpClass}>Total services billed</span>
               </div>
               <div className="flex flex-col">
-                <label className={labelClass}>Annual Tips</label>
+                <label className={labelClass}>Yearly Tips</label>
                 <CurrencyInput value={inputs.tips} onChange={(e) => handleChange('tips', e.target.value)} />
                 <span className={helpClass}>Cash tips received</span>
               </div>
@@ -144,11 +172,7 @@
           <div className="mb-8">
             <h3 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Costs (COGS)</h3>
             <div className="grid grid-cols-1 gap-4 mb-4">
-              <div className="flex flex-col">
-                <label className={labelClass}>Weekly Rent</label>
-                <CurrencyInput value={inputs.weeklyRent} onChange={(e) => handleChange('weeklyRent', e.target.value)} />
-                <span className={helpClass}>Booth rental rate</span>
-              </div>
+              <RentInput weeklyRent={inputs.weeklyRent} onChange={(v) => handleChange('weeklyRent', v)} helpClass={helpClass} />
               <div className="flex flex-col">
                 <label className={labelClass}>Your Color &amp; Supplies</label>
                 <CurrencyInput value={inputs.colorSupplies} onChange={(e) => handleChange('colorSupplies', e.target.value)} />
@@ -310,14 +334,11 @@
         tips: 32099,
         startingRate: 40,
         weeklyRent: 525,
-        otherExpenses: 15000,
         colorSupplies: 10125,
         marketing: 3500,
-        assistantHourly: 20,
-        assistantHours: 6,
-        assistantDays: 4,
-        asstTaxPct: 7,
+        laundry: 0,
         ccFeePct: 2.9,
+        otherExpenses: 1500,
       });
 
       const handleChange = (field, value) => {
@@ -334,12 +355,12 @@
 
             <div className="grid grid-cols-1 gap-4 mb-4">
               <div className="flex flex-col">
-                <label className={labelClass}>Annual Service Income</label>
+                <label className={labelClass}>Yearly Service Income</label>
                 <CurrencyInput value={inputs.serviceIncome} onChange={(e) => handleChange('serviceIncome', e.target.value)} />
                 <span className={helpClass}>Total services billed</span>
               </div>
               <div className="flex flex-col">
-                <label className={labelClass}>Annual Tips</label>
+                <label className={labelClass}>Yearly Tips</label>
                 <CurrencyInput value={inputs.tips} onChange={(e) => handleChange('tips', e.target.value)} />
               </div>
             </div>
@@ -350,14 +371,31 @@
             <br/>
             <h2 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Expenses</h2>
             <div className="grid grid-cols-1 gap-4 mb-4">
+              <RentInput weeklyRent={inputs.weeklyRent} onChange={(v) => handleChange('weeklyRent', v)} helpClass={helpClass} />
               <div className="flex flex-col">
-                <label className={labelClass}>Weekly Rent</label>
-                <CurrencyInput value={inputs.weeklyRent} onChange={(e) => handleChange('weeklyRent', e.target.value)} />
+                <label className={labelClass}>Yearly Color &amp; Supplies</label>
+                <CurrencyInput value={inputs.colorSupplies} onChange={(e) => handleChange('colorSupplies', e.target.value)} />
+                <span className={helpClass}>Annual color, backbar, tools</span>
               </div>
               <div className="flex flex-col">
-                <label className={labelClass}>Other Annual Expenses</label>
+                <label className={labelClass}>Yearly Marketing</label>
+                <CurrencyInput value={inputs.marketing} onChange={(e) => handleChange('marketing', e.target.value)} />
+                <span className={helpClass}>Annual advertising, social, etc.</span>
+              </div>
+              <div className="flex flex-col">
+                <label className={labelClass}>Yearly Laundry</label>
+                <CurrencyInput value={inputs.laundry} onChange={(e) => handleChange('laundry', e.target.value)} />
+                <span className={helpClass}>Annual towels, capes, etc.</span>
+              </div>
+              <div className="flex flex-col">
+                <label className={labelClass}>Other Yearly Expenses</label>
                 <CurrencyInput value={inputs.otherExpenses} onChange={(e) => handleChange('otherExpenses', e.target.value)} />
-                <span className={helpClass}>Total color, supplies, insurance, etc. for the year</span>
+                <span className={helpClass}>Insurance, licensing, continuing ed, etc.</span>
+              </div>
+              <div className="flex flex-col">
+                <label className={labelClass}>Credit Card Fee %</label>
+                <input type="number" className={inputClass} step="0.1" value={inputs.ccFeePct} onChange={(e) => handleChange('ccFeePct', e.target.value)} />
+                <span className={helpClass}>Applied to total income including tips</span>
               </div>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2">
@@ -370,14 +408,15 @@
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.currentTakeHome)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
-              <span className="text-sm text-red-500">Self-Employment Tax (15.3%)</span>
+              <div>
+                <span className="text-sm text-red-500">Self-Employment Tax (15.3%)</span>
+                <p className="text-xs text-stone-400">Federal — renters pay both employer + employee FICA</p>
+              </div>
               <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.selfEmploymentTax)}</span>
             </div>
-            <div className="bg-stone-100 border border-stone-200/60 rounded-lg p-4 mt-3">
-              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className="text-sm font-medium text-stone-700">Estimated Renter Take-Home</span>
-                <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedRenterTakeHome)}</span>
-              </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">
+              <span className="text-sm font-medium text-stone-700">Estimated Renter Take-Home</span>
+              <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedRenterTakeHome)}</span>
             </div>
           </div>
 
@@ -420,44 +459,20 @@
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.commissionIncome)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
-              <span className="text-sm text-red-500">Commission FICA (7.65%)</span>
+              <div>
+                <span className="text-sm text-red-500">Commission FICA (7.65%)</span>
+                <p className="text-xs text-stone-400">Federal — employee share only, salon pays the other half</p>
+              </div>
               <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.commissionFica)}</span>
             </div>
-            <div className="bg-stone-100 border border-stone-200/60 rounded-lg p-4 mt-3">
-              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className="text-sm font-medium text-stone-700">Estimated Commission Take-Home</span>
-                <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedCommissionIncome)}</span>
-              </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">
+              <span className="text-sm font-medium text-stone-700">Estimated Commission Take-Home</span>
+              <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedCommissionIncome)}</span>
             </div>
           </div>
 
-          {/* Section 4: What's Included with Commission */}
-          <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-5 md:p-6 mb-8">
-            <h2 className="text-sm font-semibold text-amber-800 mb-4">What's Included with Commission</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {calculations.salonBenefitsBreakdown.map((benefit, i) => (
-                <div key={i} className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-stone-700">&#10003; {benefit.label}</span>
-                  <span className="text-sm font-semibold text-amber-700">{formatCurrency(benefit.amount)}/yr</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-stone-700">&#10003; Front Desk &amp; Booking</span>
-                <span className="text-sm text-stone-400 italic">Included</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-stone-700">&#10003; Lower Payroll Taxes</span>
-                <span className="text-sm font-semibold text-emerald-600">Save {formatCurrency(calculations.seTaxPenalty)}/yr</span>
-              </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-amber-200/60 flex flex-wrap justify-between items-baseline gap-x-4">
-              <span className="text-sm font-semibold text-amber-800">Total Value of Benefits</span>
-              <span className="text-lg font-bold text-amber-700">{formatCurrency(calculations.salonBenefitsValue + calculations.seTaxPenalty)}/yr</span>
-            </div>
-          </div>
-
-          {/* Section 5: The Bottom Line */}
-          <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60">
+          {/* Section 4: Take-Home Pay Comparison */}
+          <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60 mb-8">
             <h2 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Take-Home Pay Comparison</h2>
 
             {/* Side-by-side comparison */}
@@ -475,7 +490,7 @@
             </div>
 
             {/* Verdict */}
-            <div className={`border rounded-lg p-4 mb-4 ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-200/60' : 'bg-stone-100 border-stone-200/60'}`}>
+            <div className={`border rounded-lg p-4 ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-200/60' : 'bg-stone-100 border-stone-200/60'}`}>
               <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
                 <span className={`text-sm font-medium ${calculations.adjustedDifference >= 0 ? 'text-emerald-800' : 'text-stone-700'}`}>
                   {calculations.adjustedDifference >= 0 ? 'Annual Gain by Switching' : 'Annual Difference'}
@@ -484,7 +499,38 @@
                   {calculations.adjustedDifference >= 0 ? '+' : ''}{formatCurrency(calculations.adjustedDifference)}
                 </span>
               </div>
+              <p className="text-xs text-stone-500 mt-3 leading-relaxed">
+                {calculations.adjustedDifference >= 0
+                  ? 'Plus, on commission you skip the hidden costs of running your own business — no chasing bookings, no managing supplies, no doing your own laundry. That\'s roughly 10 hours a week (500+ hours a year) you get back to spend behind the chair or at home.'
+                  : 'Even at a lower take-home, consider the hidden costs of renting — managing your own bookings (1–2 hrs/night), sourcing supplies, doing your own laundry, filing 1099 taxes. That\'s roughly 10 hours a week you spend running a business instead of doing hair.'}
+              </p>
             </div>
+          </div>
+
+          {/* Section 5: What's Included with Commission */}
+          <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-5 md:p-6">
+            <h2 className="text-sm font-semibold text-amber-800 mb-4">What's Included with Commission</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {calculations.salonBenefitsBreakdown.map((benefit, i) => (
+                <div key={i} className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-stone-700">&#10003; {benefit.label}</span>
+                  <span className="text-sm font-semibold text-amber-700">{formatCurrency(benefit.amount)}/yr</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-stone-700">&#10003; Front Desk &amp; Support</span>
+                <span className="text-sm text-stone-400 italic">Included</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-stone-700">&#10003; Lower Payroll Taxes</span>
+                <span className="text-sm font-semibold text-emerald-600">Save {formatCurrency(calculations.seTaxPenalty)}/yr</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-amber-200/60 flex flex-wrap justify-between items-baseline gap-x-4">
+              <span className="text-sm font-semibold text-amber-800">Total Value of Benefits</span>
+              <span className="text-lg font-bold text-amber-700">{formatCurrency(calculations.salonBenefitsValue + calculations.seTaxPenalty)}/yr</span>
+            </div>
+            <p className="text-xs text-stone-500 mt-3 leading-relaxed">On commission, the salon handles booking, front desk, supplies ordering, credit card processing, marketing, and laundry — you just show up and do great hair.</p>
           </div>
         </div>
       );

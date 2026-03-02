@@ -16,15 +16,13 @@ const defaultC2R = {
   tips: 32099,
   startingRate: 40,
   weeklyRent: 525,
+  colorSupplies: 10125,
+  marketing: 3500,
   assistantHourly: 20,
   assistantHours: 6,
   assistantDays: 4,
   asstTaxPct: 7,
   ccFeePct: 2.9,
-  salonCogs: 96413,
-  salonMarketing: 33375,
-  totalStylistHours: 16375.25,
-  stylistHours: 1719.82
 };
 
 const defaultR2C = {
@@ -32,16 +30,11 @@ const defaultR2C = {
   tips: 32099,
   startingRate: 40,
   weeklyRent: 525,
-  otherExpenses: 15000,
-  assistantHourly: 20,
-  assistantHours: 6,
-  assistantDays: 4,
-  asstTaxPct: 7,
-  salonCogs: 96413,
-  salonMarketing: 33375,
-  totalStylistHours: 16375.25,
-  stylistHours: 1719.82,
-  ccFeePct: 2.9
+  colorSupplies: 10125,
+  marketing: 3500,
+  laundry: 0,
+  ccFeePct: 2.9,
+  otherExpenses: 1500,
 };
 
 // ── Formatting ──────────────────────────────────────────────────────
@@ -105,10 +98,6 @@ describe('calculateCommissionToRenter', () => {
     expect(result.tierBreakdown[0]).toHaveProperty('commission');
   });
 
-  it('calculates stylist usage percentage', () => {
-    expect(result.usagePct).toBeCloseTo(1719.82 / 16375.25, 6);
-  });
-
   it('calculates yearly rent', () => {
     expect(result.yearlyRent).toBe(525 * 52);
   });
@@ -118,23 +107,22 @@ describe('calculateCommissionToRenter', () => {
     expect(result.asstYearly).toBeCloseTo(expected, 2);
   });
 
-  it('calculates proportional COGS', () => {
-    const usagePct = 1719.82 / 16375.25;
-    expect(result.stylistCogs).toBeCloseTo(usagePct * 96413, 2);
-    expect(result.stylistMarketing).toBeCloseTo(usagePct * 33375, 2);
+  it('uses direct color/supplies and marketing costs', () => {
+    expect(result.colorSupplies).toBe(10125);
+    expect(result.marketing).toBe(3500);
   });
 
-  it('calculates credit card fees', () => {
-    expect(result.ccFees).toBeCloseTo(100000 * 0.029, 2);
+  it('calculates credit card fees on income + tips', () => {
+    expect(result.ccFees).toBeCloseTo((100000 + 32099) * 0.029, 2);
   });
 
   it('sums total COGS correctly', () => {
     const expectedCOGS =
       result.yearlyRent +
       result.asstYearly +
-      result.stylistCogs +
+      result.colorSupplies +
       result.ccFees +
-      result.stylistMarketing;
+      result.marketing;
     expect(result.totalCOGS).toBeCloseTo(expectedCOGS, 2);
   });
 
@@ -199,7 +187,7 @@ describe('calculateTieredCommission', () => {
     const result = calculateTieredCommission(1500);
     expect(result.grossCommission).toBe(600); // 1500 * 0.40
     expect(result.effectiveRate).toBeCloseTo(0.40, 4);
-    expect(result.tierBreakdown).toHaveLength(1);
+    expect(result.tierBreakdown).toHaveLength(5);
     expect(result.tierBreakdown[0].rate).toBe(0.40);
     expect(result.tierBreakdown[0].amount).toBe(1500);
   });
@@ -209,7 +197,7 @@ describe('calculateTieredCommission', () => {
     // $2,000 * 0.40 + $1,000 * 0.45 = $800 + $450 = $1,250
     expect(result.grossCommission).toBe(1250);
     expect(result.effectiveRate).toBeCloseTo(1250 / 3000, 4);
-    expect(result.tierBreakdown).toHaveLength(2);
+    expect(result.tierBreakdown).toHaveLength(5);
     expect(result.tierBreakdown[0].commission).toBe(800);
     expect(result.tierBreakdown[1].commission).toBe(450);
   });
@@ -227,13 +215,13 @@ describe('calculateTieredCommission', () => {
     const result = calculateTieredCommission(0);
     expect(result.grossCommission).toBe(0);
     expect(result.effectiveRate).toBe(0);
-    expect(result.tierBreakdown).toHaveLength(0);
+    expect(result.tierBreakdown).toHaveLength(5);
   });
 
   it('handles exact bracket boundary ($2,000)', () => {
     const result = calculateTieredCommission(2000);
     expect(result.grossCommission).toBe(800);
-    expect(result.tierBreakdown).toHaveLength(1);
+    expect(result.tierBreakdown).toHaveLength(5);
   });
 
   it('applies custom starting rate (45%)', () => {
@@ -309,8 +297,14 @@ describe('calculateRenterToCommission', () => {
   });
 
   it('sums total expenses correctly', () => {
-    expect(result.totalExpenses).toBeGreaterThan(0);
-    expect(result.totalExpenses).toBeGreaterThan(result.currentRent);
+    const expectedExpenses =
+      525 * 52 +      // rent
+      10125 +         // colorSupplies
+      (100000 + 32099) * 0.029 + // ccFees (income + tips)
+      3500 +          // marketing
+      0 +             // laundry
+      1500;           // otherExpenses
+    expect(result.totalExpenses).toBeCloseTo(expectedExpenses, 2);
   });
 
   it('calculates current take-home as income minus expenses', () => {
@@ -391,14 +385,16 @@ describe('calculateRenterToCommission', () => {
   it('returns salon benefits value and breakdown', () => {
     expect(result.salonBenefitsValue).toBeGreaterThan(0);
     expect(result.salonBenefitsBreakdown).toHaveLength(5);
+    const labels = result.salonBenefitsBreakdown.map(b => b.label);
+    expect(labels).toContain('Booth Rent');
+    expect(labels).toContain('Color & Supplies');
+    expect(labels).toContain('Marketing');
+    expect(labels).toContain('Laundry');
+    expect(labels).toContain('Credit Card Processing');
     const sum = result.salonBenefitsBreakdown.reduce((s, b) => s + b.amount, 0);
     expect(sum).toBeCloseTo(result.salonBenefitsValue, 2);
   });
 
-  it('calculates slow week comparison at 70% volume', () => {
-    expect(result.slowWeekComparison.renterTakeHome).toBeLessThan(result.currentTakeHome);
-    expect(result.slowWeekComparison.commissionTakeHome).toBeLessThan(result.commissionIncome);
-  });
 
   it('handles zero service income gracefully', () => {
     const zeroInputs = { ...defaultR2C, serviceIncome: 0 };
@@ -406,7 +402,7 @@ describe('calculateRenterToCommission', () => {
     expect(r.avgWeeklySales).toBe(0);
     expect(r.weeklyCommission).toBe(0);
     expect(r.effectiveRate).toBe(0);
-    expect(r.tierBreakdown).toHaveLength(0);
+    expect(r.tierBreakdown).toHaveLength(5);
     expect(r.totalIncome).toBe(32099);
     expect(r.salonBenefitsBreakdown).toHaveLength(5);
   });
@@ -420,14 +416,6 @@ describe('calculateRenterToCommission', () => {
 // ── Cross-check: both calculators agree on shared math ──────────────
 
 describe('cross-calculator consistency', () => {
-  it('both calculators produce the same usage percentage', () => {
-    const c2r = calculateCommissionToRenter(defaultC2R);
-    expect(c2r.usagePct).toBeCloseTo(
-      defaultR2C.stylistHours / defaultR2C.totalStylistHours,
-      6
-    );
-  });
-
   it('both calculators use tiered commission (not flat rate)', () => {
     const c2r = calculateCommissionToRenter(defaultC2R);
     const r2c = calculateRenterToCommission(defaultR2C);
