@@ -490,15 +490,17 @@
             </div>
 
             {/* Verdict */}
-            <div className={`border rounded-lg p-4 ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-200/60' : 'bg-stone-100 border-stone-200/60'}`}>
-              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className={`text-sm font-medium ${calculations.adjustedDifference >= 0 ? 'text-emerald-800' : 'text-stone-700'}`}>
-                  {calculations.adjustedDifference >= 0 ? 'Annual Gain by Switching' : 'Annual Difference'}
-                </span>
-                <span className={`text-2xl sm:text-3xl font-bold ${calculations.adjustedDifference >= 0 ? 'text-emerald-700' : 'text-stone-700'}`}>
-                  {calculations.adjustedDifference >= 0 ? '+' : ''}{formatCurrency(calculations.adjustedDifference)}
-                </span>
-              </div>
+            <div className={`border-2 rounded-lg p-5 text-center shadow-md ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-300' : 'bg-stone-100 border-stone-300'}`}>
+              <span className={`text-xs font-semibold uppercase tracking-wider ${calculations.adjustedDifference >= 0 ? 'text-emerald-600' : 'text-stone-500'}`}>
+                {calculations.adjustedDifference >= 0 ? 'The Verdict: You\'d Gain' : 'Annual Difference'}
+              </span>
+              <p className={`text-4xl sm:text-5xl font-extrabold mt-2 ${calculations.adjustedDifference >= 0 ? 'text-emerald-700' : 'text-stone-700'}`}>
+                {calculations.adjustedDifference >= 0 ? '+' : ''}{formatCurrency(calculations.adjustedDifference)}
+                <span className="text-lg font-semibold opacity-70">/yr</span>
+              </p>
+              <p className={`text-sm font-medium mt-1 ${calculations.adjustedDifference >= 0 ? 'text-emerald-600' : 'text-stone-500'}`}>
+                That's {calculations.adjustedDifference >= 0 ? '+' : ''}{formatCurrency(Math.round(calculations.adjustedDifference / 12))}/mo in your pocket
+              </p>
               <p className="text-xs text-stone-500 mt-3 leading-relaxed">
                 {calculations.adjustedDifference >= 0
                   ? 'Plus, on commission you skip the hidden costs of running your own business — no chasing bookings, no managing supplies, no doing your own laundry. That\'s roughly 10 hours a week (500+ hours a year) you get back to spend behind the chair or at home.'
@@ -529,6 +531,14 @@
             <div className="mt-4 pt-3 border-t border-amber-200/60 flex flex-wrap justify-between items-baseline gap-x-4">
               <span className="text-sm font-semibold text-amber-800">Total Value of Benefits</span>
               <span className="text-lg font-bold text-amber-700">{formatCurrency(calculations.salonBenefitsValue + calculations.seTaxPenalty)}/yr</span>
+            </div>
+            {/* Client flow callout */}
+            <div className="bg-white/60 border border-amber-200 rounded-lg p-4 mt-4">
+              <p className="text-sm font-semibold text-amber-800">100+ new clients/month</p>
+              <p className="text-xs text-stone-500 mt-1">
+                The salon's front desk, marketing, and walk-in traffic keep your
+                book full — no need to build your own pipeline from scratch.
+              </p>
             </div>
             <p className="text-xs text-stone-500 mt-3 leading-relaxed">On commission, the salon handles booking, front desk, supplies ordering, credit card processing, marketing, and laundry — you just show up and do great hair.</p>
           </div>
