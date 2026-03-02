@@ -27,7 +27,7 @@
     /* Hide number input spinners for cleaner look */
     input[type=number]::-webkit-inner-spin-button,
     input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-    input[type=number] { -moz-appearance: textfield; }
+    input[type=number] { -moz-appearance: textfield; text-align: right !important; }
     /* Prevent tap highlight on mobile */
     button { -webkit-tap-highlight-color: transparent; }
     @media print {
@@ -72,14 +72,14 @@
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onChange={onChange}
-          className="w-full px-3 py-3 border border-stone-300 rounded-lg text-[16px] leading-6 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+          className="w-full px-3 py-3 border border-stone-300 rounded-lg text-[16px] leading-6 text-right transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
           {...props}
         />
       );
     };
 
     // Shared input styling
-    const inputClass = "w-full px-3 py-3 border border-stone-300 rounded-lg text-[16px] leading-6 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500";
+    const inputClass = "w-full px-3 py-3 border border-stone-300 rounded-lg text-[16px] leading-6 text-right transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500";
     const readOnlyClass = "w-full px-3 py-3 border border-stone-200 rounded-lg text-[16px] leading-6 bg-stone-100 text-stone-500";
     const labelClass = "text-xs font-semibold text-stone-500 mb-1 uppercase tracking-wider";
     const helpClass = "text-xs text-stone-400 mt-1";
@@ -91,15 +91,13 @@
         tips: 32099,
         startingRate: 40,
         weeklyRent: 525,
+        colorSupplies: 10125,
+        marketing: 3500,
         assistantHourly: 20,
         assistantHours: 6,
         assistantDays: 4,
         asstTaxPct: 7,
         ccFeePct: 2.9,
-        salonCogs: 96413,
-        salonMarketing: 33375,
-        totalStylistHours: 16375.25,
-        stylistHours: 1719.82,
       });
 
       const handleChange = (field, value) => {
@@ -128,7 +126,7 @@
           {/* Income Section */}
           <div className="mb-8">
             <h3 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Income</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div className="flex flex-col">
                 <label className={labelClass}>Annual Service Income</label>
                 <CurrencyInput value={inputs.serviceIncome} onChange={(e) => handleChange('serviceIncome', e.target.value)} />
@@ -139,53 +137,30 @@
                 <CurrencyInput value={inputs.tips} onChange={(e) => handleChange('tips', e.target.value)} />
                 <span className={helpClass}>Cash tips received</span>
               </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Starting Commission Rate</label>
-                <input type="number" className={inputClass} min="40" max="50" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
-                <span className={helpClass}>Base rate for first bracket (40% default, up to 50% for senior stylists)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Stylist Usage Section */}
-          <div className="mb-8">
-            <h3 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Stylist Usage</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="flex flex-col">
-                <label className={labelClass}>Your Hours Worked</label>
-                <input type="number" className={inputClass} value={inputs.stylistHours} onChange={(e) => handleChange('stylistHours', e.target.value)} />
-              </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Total Salon Hours</label>
-                <input type="number" className={inputClass} value={inputs.totalStylistHours} onChange={(e) => handleChange('totalStylistHours', e.target.value)} />
-              </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Your Usage %</label>
-                <input type="text" className={readOnlyClass} value={formatPercent(calculations.usagePct)} readOnly />
-              </div>
             </div>
           </div>
 
           {/* Costs Section */}
           <div className="mb-8">
             <h3 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Costs (COGS)</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-1 gap-4 mb-4">
               <div className="flex flex-col">
                 <label className={labelClass}>Weekly Rent</label>
                 <CurrencyInput value={inputs.weeklyRent} onChange={(e) => handleChange('weeklyRent', e.target.value)} />
                 <span className={helpClass}>Booth rental rate</span>
               </div>
               <div className="flex flex-col">
-                <label className={labelClass}>Total Salon COGS</label>
-                <CurrencyInput value={inputs.salonCogs} onChange={(e) => handleChange('salonCogs', e.target.value)} />
-                <span className={helpClass}>Color, supplies, backbar</span>
+                <label className={labelClass}>Your Color &amp; Supplies</label>
+                <CurrencyInput value={inputs.colorSupplies} onChange={(e) => handleChange('colorSupplies', e.target.value)} />
+                <span className={helpClass}>Annual color, backbar, tools</span>
               </div>
               <div className="flex flex-col">
-                <label className={labelClass}>Total Salon Marketing</label>
-                <CurrencyInput value={inputs.salonMarketing} onChange={(e) => handleChange('salonMarketing', e.target.value)} />
+                <label className={labelClass}>Your Marketing</label>
+                <CurrencyInput value={inputs.marketing} onChange={(e) => handleChange('marketing', e.target.value)} />
+                <span className={helpClass}>Annual advertising, social, etc.</span>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-1 gap-4 mb-4">
               <div className="flex flex-col">
                 <label className={labelClass}>Assistant Hourly Rate</label>
                 <CurrencyInput value={inputs.assistantHourly} onChange={(e) => handleChange('assistantHourly', e.target.value)} />
@@ -199,7 +174,7 @@
                 <input type="number" className={inputClass} value={inputs.assistantDays} onChange={(e) => handleChange('assistantDays', e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div className="flex flex-col">
                 <label className={labelClass}>Assistant Tax %</label>
                 <input type="number" className={inputClass} value={inputs.asstTaxPct} onChange={(e) => handleChange('asstTaxPct', e.target.value)} />
@@ -237,11 +212,19 @@
             {calculations.tierBreakdown.map((tier, i) => (
               <div key={i} className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100 last:border-b-0">
                 <span className="text-sm text-stone-500">
-                  {tier.rangeLabel} <span className="text-stone-400">@ {(tier.rate * 100).toFixed(0)}%</span>
+                  {tier.rangeLabel} <span className="text-stone-400">@ </span>
+                  {i === 0 ? (
+                    <span className="inline-flex items-center">
+                      <input type="number" className="w-12 px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" min="40" max="50" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
+                      <span className="text-stone-400">%</span>
+                    </span>
+                  ) : (
+                    <span className="text-stone-400">{(tier.rate * 100).toFixed(0)}%</span>
+                  )}
                 </span>
                 <span className="text-sm font-medium text-stone-700">
+                  <span className="text-stone-400 text-xs mr-1">({formatCurrency(tier.amount)})</span>
                   {formatCurrency(tier.commission)}
-                  <span className="text-stone-400 text-xs ml-1">({formatCurrency(tier.amount)})</span>
                 </span>
               </div>
             ))}
@@ -328,14 +311,12 @@
         startingRate: 40,
         weeklyRent: 525,
         otherExpenses: 15000,
+        colorSupplies: 10125,
+        marketing: 3500,
         assistantHourly: 20,
         assistantHours: 6,
         assistantDays: 4,
         asstTaxPct: 7,
-        salonCogs: 96413,
-        salonMarketing: 33375,
-        totalStylistHours: 16375.25,
-        stylistHours: 1719.82,
         ccFeePct: 2.9,
       });
 
@@ -347,50 +328,112 @@
 
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
-          {/* Hero Summary */}
-          <div className={`border rounded-xl p-5 mb-8 ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-stone-50 border-stone-200'}`}>
-            <p className={`text-sm font-medium mb-1 ${calculations.adjustedDifference >= 0 ? 'text-emerald-800' : 'text-stone-700'}`}>
-              {calculations.adjustedDifference >= 0 ? 'Annual Gain by Switching' : 'Annual Difference'}
-            </p>
-            <p className={`text-3xl sm:text-4xl font-bold ${calculations.adjustedDifference >= 0 ? 'text-emerald-700' : 'text-stone-700'}`}>
-              {calculations.adjustedDifference >= 0 ? '+' : ''}{formatCurrency(calculations.adjustedDifference)}
-            </p>
-            <p className={`text-xs mt-1 ${calculations.adjustedDifference >= 0 ? 'text-emerald-600' : 'text-stone-500'}`}>After accounting for payroll taxes on both sides</p>
-          </div>
+          {/* Section 1: Your Current Renter Income (inputs merged into card) */}
+          <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60 mb-8">
+            <h2 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Your Current Renter Income</h2>
 
-          <div className="mb-8">
-            <h3 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Current Renter Setup</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-1 gap-4 mb-4">
               <div className="flex flex-col">
                 <label className={labelClass}>Annual Service Income</label>
                 <CurrencyInput value={inputs.serviceIncome} onChange={(e) => handleChange('serviceIncome', e.target.value)} />
+                <span className={helpClass}>Total services billed</span>
               </div>
               <div className="flex flex-col">
                 <label className={labelClass}>Annual Tips</label>
                 <CurrencyInput value={inputs.tips} onChange={(e) => handleChange('tips', e.target.value)} />
               </div>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
+              <span className="text-sm text-stone-500 font-bold">Total Gross Income</span>
+              <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.totalIncome)}</span>
+            </div>
+            <br/>
+            <h2 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Expenses</h2>
+            <div className="grid grid-cols-1 gap-4 mb-4">
               <div className="flex flex-col">
                 <label className={labelClass}>Weekly Rent</label>
                 <CurrencyInput value={inputs.weeklyRent} onChange={(e) => handleChange('weeklyRent', e.target.value)} />
               </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div className="flex flex-col">
-                <label className={labelClass}>Starting Commission Rate</label>
-                <input type="number" className={inputClass} min="40" max="50" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
-                <span className={helpClass}>Base rate for first bracket (40% default, up to 50% for senior stylists)</span>
+                <label className={labelClass}>Other Annual Expenses</label>
+                <CurrencyInput value={inputs.otherExpenses} onChange={(e) => handleChange('otherExpenses', e.target.value)} />
+                <span className={helpClass}>Total color, supplies, insurance, etc. for the year</span>
               </div>
             </div>
-            <div className="flex flex-col">
-              <label className={labelClass}>Expenses Other Than Rent</label>
-              <CurrencyInput value={inputs.otherExpenses} onChange={(e) => handleChange('otherExpenses', e.target.value)} />
-              <span className={helpClass}>Insurance, supplies, etc.</span>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2">
+              <span className="text-sm text-red-500">Total Annual Expenses</span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.totalExpenses)}</span>
+            </div>
+            <div className="border-t border-stone-300 my-1"></div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
+              <span className="text-sm text-stone-500">Take-Home Before Taxes</span>
+              <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.currentTakeHome)}</span>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-red-500">Self-Employment Tax (15.3%)</span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.selfEmploymentTax)}</span>
+            </div>
+            <div className="bg-stone-100 border border-stone-200/60 rounded-lg p-4 mt-3">
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
+                <span className="text-sm font-medium text-stone-700">Estimated Renter Take-Home</span>
+                <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedRenterTakeHome)}</span>
+              </div>
             </div>
           </div>
 
-          {/* What's Included */}
+          {/* Section 2: Estimated Commission Income */}
+          <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60 mb-8">
+            <h2 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Estimated Commission Income</h2>
+
+            <h3 className="text-xs font-semibold text-stone-500 mb-3 uppercase tracking-wider">Weekly Commission Breakdown</h3>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-stone-500">Avg Weekly Service Income</span>
+              <span className="text-sm font-semibold text-stone-700">{formatCurrency(calculations.avgWeeklySales)}</span>
+            </div>
+            {calculations.tierBreakdown.map((tier, i) => (
+              <div key={i} className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100 last:border-b-0">
+                <span className="text-sm text-stone-500">
+                  {tier.rangeLabel} <span className="text-stone-400">@ </span>
+                  {i === 0 ? (
+                    <span className="inline-flex items-center">
+                      <input type="number" className="w-12 px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" min="40" max="50" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
+                      <span className="text-stone-400">%</span>
+                    </span>
+                  ) : (
+                    <span className="text-stone-400">{(tier.rate * 100).toFixed(0)}%</span>
+                  )}
+                </span>
+                <span className="text-sm font-medium text-stone-700">
+                  <span className="text-stone-400 text-xs mr-1">({formatCurrency(tier.amount)})</span>
+                  {formatCurrency(tier.commission)}
+                </span>
+              </div>
+            ))}
+
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-t border-stone-300">
+              <span className="text-sm text-stone-500 font-bold">Weekly Gross Commission</span>
+              <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.weeklyCommission)}</span>
+            </div>
+
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
+              <span className="text-sm text-stone-500">Annual Commission + Tips</span>
+              <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.commissionIncome)}</span>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-red-500">Commission FICA (7.65%)</span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.commissionFica)}</span>
+            </div>
+            <div className="bg-stone-100 border border-stone-200/60 rounded-lg p-4 mt-3">
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
+                <span className="text-sm font-medium text-stone-700">Estimated Commission Take-Home</span>
+                <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedCommissionIncome)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: What's Included with Commission */}
           <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-5 md:p-6 mb-8">
-            <h3 className="text-sm font-semibold text-amber-800 mb-4">What's Included with Commission</h3>
+            <h2 className="text-sm font-semibold text-amber-800 mb-4">What's Included with Commission</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {calculations.salonBenefitsBreakdown.map((benefit, i) => (
                 <div key={i} className="flex items-center justify-between gap-2">
@@ -413,93 +456,34 @@
             </div>
           </div>
 
-          {/* Results */}
+          {/* Section 5: The Bottom Line */}
           <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60">
-            <h3 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Commission Equivalent</h3>
+            <h2 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Take-Home Pay Comparison</h2>
 
-            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
-              <span className="text-sm text-stone-500">Current Renter Take-Home</span>
-              <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.currentTakeHome)}</span>
-            </div>
-            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
-              <span className="text-sm text-red-500">Self-Employment Tax (15.3%)</span>
-              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.selfEmploymentTax)}</span>
-            </div>
-            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
-              <span className="text-sm text-stone-500 font-medium">Actual Renter Take-Home</span>
-              <span className="text-lg font-bold text-red-700">{formatCurrency(calculations.adjustedRenterTakeHome)}</span>
-            </div>
-
-            {/* Tier Breakdown */}
-            <div className="mt-5">
-              <h4 className="text-xs font-semibold text-stone-500 mb-3 uppercase tracking-wider">Weekly Commission Breakdown</h4>
-              <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
-                <span className="text-sm text-stone-500">Avg Weekly Sales</span>
-                <span className="text-sm font-semibold text-stone-700">{formatCurrency(calculations.avgWeeklySales)}</span>
+            {/* Side-by-side comparison */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <div className="bg-amber-50 border border-amber-200/60 rounded-lg p-4 text-center">
+                <p className="text-xs text-amber-600 font-medium mb-1">As a Renter</p>
+                <p className="text-2xl font-bold text-amber-700">{formatCurrency(calculations.adjustedRenterTakeHome)}</p>
+                <p className="text-xs text-stone-400 mt-1">after self-employment tax</p>
               </div>
-              {calculations.tierBreakdown.map((tier, i) => (
-                <div key={i} className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100 last:border-b-0">
-                  <span className="text-sm text-stone-500">
-                    {tier.rangeLabel} <span className="text-stone-400">@ {(tier.rate * 100).toFixed(0)}%</span>
-                  </span>
-                  <span className="text-sm font-medium text-stone-700">
-                    {formatCurrency(tier.commission)}
-                    <span className="text-stone-400 text-xs ml-1">({formatCurrency(tier.amount)})</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="bg-orange-50 border border-orange-200/60 rounded-lg p-4 mt-4">
-              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className="text-sm text-stone-600">Effective Commission Rate</span>
-                <span className="text-xl sm:text-2xl font-bold text-orange-700">
-                  {(calculations.effectiveRate * 100).toFixed(1)}%
-                </span>
-              </div>
-              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1 mt-2">
-                <span className="text-sm text-stone-600">Weekly Gross Commission</span>
-                <span className="text-lg font-bold text-orange-700">{formatCurrency(calculations.weeklyCommission)}</span>
+              <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-4 text-center">
+                <p className="text-xs text-emerald-600 font-medium mb-1">On Commission</p>
+                <p className="text-2xl font-bold text-emerald-700">{formatCurrency(calculations.adjustedCommissionIncome)}</p>
+                <p className="text-xs text-stone-400 mt-1">after FICA</p>
               </div>
             </div>
 
-            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 mt-3 border-b border-stone-200">
-              <span className="text-sm text-stone-500">Annual Commission Income (tiered)</span>
-              <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.commissionIncome)}</span>
-            </div>
-            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
-              <span className="text-sm text-red-500">Commission FICA (7.65%)</span>
-              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.commissionFica)}</span>
-            </div>
-            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
-              <span className="text-sm text-stone-500 font-medium">Actual Commission Take-Home</span>
-              <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.adjustedCommissionIncome)}</span>
-            </div>
-            <div className={`border rounded-lg p-4 mt-3 ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-200/60' : 'bg-stone-100 border-stone-200/60'}`}>
+            {/* Verdict */}
+            <div className={`border rounded-lg p-4 mb-4 ${calculations.adjustedDifference >= 0 ? 'bg-emerald-50 border-emerald-200/60' : 'bg-stone-100 border-stone-200/60'}`}>
               <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
                 <span className={`text-sm font-medium ${calculations.adjustedDifference >= 0 ? 'text-emerald-800' : 'text-stone-700'}`}>
                   {calculations.adjustedDifference >= 0 ? 'Annual Gain by Switching' : 'Annual Difference'}
                 </span>
-                <span className={`text-xl sm:text-2xl font-bold ${calculations.adjustedDifference >= 0 ? 'text-emerald-700' : 'text-stone-700'}`}>
+                <span className={`text-2xl sm:text-3xl font-bold ${calculations.adjustedDifference >= 0 ? 'text-emerald-700' : 'text-stone-700'}`}>
                   {calculations.adjustedDifference >= 0 ? '+' : ''}{formatCurrency(calculations.adjustedDifference)}
                 </span>
               </div>
-            </div>
-
-            {/* Slow Week Risk Comparison */}
-            <div className="mt-5">
-              <h4 className="text-xs font-semibold text-stone-500 mb-3 uppercase tracking-wider">Slow Month Comparison (70% Volume)</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="bg-red-50 border border-red-200/60 rounded-lg p-3">
-                  <p className="text-xs text-red-600 font-medium mb-1">Renter Take-Home</p>
-                  <p className="text-lg font-bold text-red-700">{formatCurrency(calculations.slowWeekComparison.renterTakeHome)}</p>
-                </div>
-                <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-3">
-                  <p className="text-xs text-emerald-600 font-medium mb-1">Commission Take-Home</p>
-                  <p className="text-lg font-bold text-emerald-700">{formatCurrency(calculations.slowWeekComparison.commissionTakeHome)}</p>
-                </div>
-              </div>
-              <p className="text-xs text-stone-400 mt-2">On slow weeks, renters still owe fixed costs. Commission scales down gracefully.</p>
             </div>
           </div>
         </div>
