@@ -539,7 +539,7 @@
     const VALID_TABS = ['commission-to-renter', 'renter-to-commission'];
     const getTabFromHash = () => {
       const hash = window.location.hash.replace('#', '');
-      return VALID_TABS.includes(hash) ? hash : 'commission-to-renter';
+      return VALID_TABS.includes(hash) ? hash : 'renter-to-commission';
     };
 
     const App = () => {
@@ -571,29 +571,7 @@
             </button>
           </div>
 
-          <div className="flex gap-1 mb-6">
-            <button
-              className={`flex-1 sm:flex-none px-4 sm:px-5 py-3.5 rounded-t-xl text-sm font-semibold transition-all border-b-2 min-h-[44px] ${
-                activeTab === 'commission-to-renter'
-                  ? 'bg-white text-amber-700 border-amber-500 shadow-sm'
-                  : 'bg-stone-100 text-stone-500 border-transparent hover:bg-stone-200 hover:text-stone-700 active:bg-stone-300'
-              }`}
-              onClick={() => switchTab('commission-to-renter')}
-            >
-              Commission &rarr; Renter
-            </button>
-            <button
-              className={`flex-1 sm:flex-none px-4 sm:px-5 py-3.5 rounded-t-xl text-sm font-semibold transition-all border-b-2 min-h-[44px] ${
-                activeTab === 'renter-to-commission'
-                  ? 'bg-white text-amber-700 border-amber-500 shadow-sm'
-                  : 'bg-stone-100 text-stone-500 border-transparent hover:bg-stone-200 hover:text-stone-700 active:bg-stone-300'
-              }`}
-              onClick={() => switchTab('renter-to-commission')}
-            >
-              Renter &rarr; Commission
-            </button>
-          </div>
-
+          {/* Tab bar hidden for now — C2R tab still accessible via #commission-to-renter */}
           {activeTab === 'commission-to-renter' ? <CommissionToRenter /> : <RenterToCommission />}
 
           <p className="text-center text-xs text-stone-400 mt-8">Studio Los Gatos &middot; StudioMetrics</p>
