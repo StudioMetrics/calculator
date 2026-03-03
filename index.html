@@ -87,6 +87,34 @@
       return [state, setState];
     };
 
+    // Persist salon config with Infinity handling and defaults merging
+    const useConfigState = (key, defaults) => {
+      const serialize = (config) => ({
+        ...config,
+        commissionTiers: config.commissionTiers.map(t => ({
+          ...t, upTo: t.upTo === Infinity ? "Infinity" : t.upTo
+        }))
+      });
+      const deserialize = (raw) => {
+        const merged = { ...defaults, ...raw };
+        merged.salonInvestments = { ...defaults.salonInvestments, ...raw.salonInvestments };
+        merged.commissionTiers = (raw.commissionTiers || defaults.commissionTiers).map(t => ({
+          ...t, upTo: t.upTo === "Infinity" || t.upTo === null ? Infinity : t.upTo
+        }));
+        return merged;
+      };
+      const [state, setState] = useState(() => {
+        try {
+          const saved = localStorage.getItem(key);
+          return saved ? deserialize(JSON.parse(saved)) : defaults;
+        } catch { return defaults; }
+      });
+      useEffect(() => {
+        localStorage.setItem(key, JSON.stringify(serialize(state)));
+      }, [key, state]);
+      return [state, setState];
+    };
+
     // Currency input: shows "$1,234" when blurred, raw number when editing
     const CurrencyInput = ({ value, onChange, ...props }) => {
       const [focused, setFocused] = useState(false);
@@ -142,7 +170,7 @@
     };
 
     // Commission to Renter Calculator
-    const CommissionToRenter = () => {
+    const CommissionToRenter = ({ config }) => {
       const [inputs, setInputs] = usePersistedState('c2r-inputs', {
         serviceIncome: 100000,
         tips: 18000,
@@ -163,26 +191,16 @@
 
       const calculations = useMemo(() => calculateCommissionToRenter({
         ...inputs,
-        commissionType: SALON_CONFIG.commissionType,
-        commissionTiers: SALON_CONFIG.commissionTiers,
-        salonInvestments: SALON_CONFIG.salonInvestments,
-      }), [inputs]);
+        commissionType: config.commissionType,
+        commissionTiers: config.commissionTiers,
+        salonInvestments: config.salonInvestments,
+      }), [inputs, config]);
 
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
-          {/* Hero Summary - Retention Warning */}
-          <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-8">
-            <p className="text-sm font-medium text-red-800 mb-1">Client Loss Breakeven</p>
-            <p className="text-3xl sm:text-4xl font-bold text-red-700">
-              {calculations.crossoverRetention > 0
-                ? `${calculations.crossoverRetention.toFixed(0)}% client loss`
-                : 'Renting costs more even keeping all clients'}
-            </p>
-            <p className="text-xs text-red-600 mt-1">
-              {calculations.crossoverRetention > 0
-                ? `If more than ${calculations.crossoverRetention.toFixed(0)}% of your clients don't follow you, renting loses money`
-                : 'The math doesn\'t support switching to renting at current rates'}
-            </p>
+          {/* Explainer Callout */}
+          <div className="bg-stone-100 border border-stone-200 rounded-xl p-4 mb-8">
+            <p className="text-sm text-stone-600">Already on commission? Enter your numbers to see what it would really cost to go out on your own — including the risk of losing clients.</p>
           </div>
 
           {/* Income Section */}
@@ -282,8 +300,12 @@
                   {tier.rangeLabel} <span className="text-stone-400">@ </span>
                   {i === 0 ? (
                     <span className="inline-flex items-center">
-                      <input type="number" className="w-12 px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" min="40" max="50" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
-                      <span className="text-stone-400">%</span>
+                      <select className="px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)}>
+                        <option value="40">40%</option>
+                        <option value="45">45%</option>
+                        <option value="50">50%</option>
+                        <option value="55">55%</option>
+                      </select>
                     </span>
                   ) : (
                     <span className="text-stone-400">{(tier.rate * 100).toFixed(0)}%</span>
@@ -300,8 +322,12 @@
                 <span className="text-sm text-stone-500">
                   Flat Rate <span className="text-stone-400">@ </span>
                   <span className="inline-flex items-center">
-                    <input type="number" className="w-12 px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" min="1" max="99" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
-                    <span className="text-stone-400">%</span>
+                    <select className="px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)}>
+                      <option value="40">40%</option>
+                      <option value="45">45%</option>
+                      <option value="50">50%</option>
+                      <option value="55">55%</option>
+                    </select>
                   </span>
                 </span>
                 <span className="text-sm font-medium text-stone-700">{formatCurrency(calculations.tierBreakdown[0]?.commission)}</span>
@@ -319,6 +345,21 @@
                 <span className="text-lg font-bold text-orange-700">{formatCurrency(calculations.commissionGross)}</span>
               </div>
             </div>
+          </div>
+
+          {/* Client Loss Breakeven */}
+          <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-8">
+            <p className="text-sm font-medium text-red-800 mb-1">Client Loss Breakeven</p>
+            <p className="text-3xl sm:text-4xl font-bold text-red-700">
+              {calculations.crossoverRetention > 0
+                ? `${calculations.crossoverRetention.toFixed(0)}% client loss`
+                : 'Renting costs more even keeping all clients'}
+            </p>
+            <p className="text-xs text-red-600 mt-1">
+              {calculations.crossoverRetention > 0
+                ? `If more than ${calculations.crossoverRetention.toFixed(0)}% of your clients don't follow you, renting loses money`
+                : 'The math doesn\'t support switching to renting at current rates'}
+            </p>
           </div>
 
           {/* Results */}
@@ -383,7 +424,7 @@
     };
 
     // Renter to Commission Calculator
-    const RenterToCommission = () => {
+    const RenterToCommission = ({ config }) => {
       const [inputs, setInputs] = usePersistedState('r2c-inputs', {
         serviceIncome: 100000,
         tips: 18000,
@@ -402,13 +443,18 @@
 
       const calculations = useMemo(() => calculateRenterToCommission({
         ...inputs,
-        commissionType: SALON_CONFIG.commissionType,
-        commissionTiers: SALON_CONFIG.commissionTiers,
-        salonInvestments: SALON_CONFIG.salonInvestments,
-      }), [inputs]);
+        commissionType: config.commissionType,
+        commissionTiers: config.commissionTiers,
+        salonInvestments: config.salonInvestments,
+      }), [inputs, config]);
 
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
+          {/* Explainer Callout */}
+          <div className="bg-stone-100 border border-stone-200 rounded-xl p-4 mb-8">
+            <p className="text-sm text-stone-600">Enter your current renter income and expenses to see how switching to commission compares — including tax savings and salon benefits.</p>
+          </div>
+
           {/* Section 1: Your Current Renter Income (inputs merged into card) */}
           <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60 mb-8">
             <h2 className="text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100">Your Current Renter Income</h2>
@@ -537,7 +583,7 @@
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.weeklyCommission)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
-              <span className="text-sm text-stone-500">Tips @ {SALON_CONFIG.defaultTipPercent}%</span>
+              <span className="text-sm text-stone-500">Tips @ {config.defaultTipPercent}%</span>
               <span className="text-sm font-semibold text-stone-700">+{formatCurrency(inputs.tips)}/yr</span>
             </div>
 
@@ -585,7 +631,7 @@
             </div>
             {/* Client flow callout */}
             <div className="bg-white/60 border border-amber-200 rounded-lg p-4 mt-4">
-              <p className="text-sm font-semibold text-amber-800">{SALON_CONFIG.salonInvestments.newClientsPerMonth}+ new clients/month</p>
+              <p className="text-sm font-semibold text-amber-800">{config.salonInvestments.newClientsPerMonth}+ new clients/month</p>
               <p className="text-xs text-stone-500 mt-1">
                 The salon's front desk, marketing, and walk-in traffic keep your
                 book full — no need to build your own pipeline from scratch.
@@ -636,21 +682,181 @@
       );
     };
 
-    const VALID_TABS = ['commission-to-renter', 'renter-to-commission'];
-    const getTabFromHash = () => {
+    const VALID_TABS = ['commission-to-renter', 'renter-to-commission', 'settings'];
+    const getTabFromHash = (defaultTab) => {
       const hash = window.location.hash.replace('#', '');
-      return VALID_TABS.includes(hash) ? hash : SALON_CONFIG.defaultTab;
+      return VALID_TABS.includes(hash) ? hash : (defaultTab || SALON_CONFIG.defaultTab);
+    };
+
+    // Settings Panel
+    const SettingsPanel = ({ config, setConfig, onBack }) => {
+      const update = (field, value) => setConfig(prev => ({ ...prev, [field]: value }));
+      const updateInvestment = (field, value) => setConfig(prev => ({
+        ...prev,
+        salonInvestments: { ...prev.salonInvestments, [field]: value }
+      }));
+      const updateTier = (index, field, value) => {
+        const tiers = config.commissionTiers.map((t, i) => i === index ? { ...t, [field]: value } : t);
+        update('commissionTiers', tiers);
+      };
+      const addTier = () => {
+        const tiers = [...config.commissionTiers];
+        const lastIdx = tiers.length - 1;
+        // Insert before the Infinity tier
+        tiers.splice(lastIdx, 0, { upTo: tiers[lastIdx - 1].upTo + 1000, rate: tiers[lastIdx - 1].rate });
+        update('commissionTiers', tiers);
+      };
+      const removeTier = (index) => {
+        if (config.commissionTiers.length <= 2) return;
+        update('commissionTiers', config.commissionTiers.filter((_, i) => i !== index));
+      };
+      const resetDefaults = () => {
+        if (window.confirm('Reset all settings to defaults? This cannot be undone.')) {
+          setConfig(SALON_CONFIG);
+        }
+      };
+
+      const sectionClass = "mb-8";
+      const sectionTitle = "text-sm font-semibold text-stone-700 mb-4 pb-2 border-b-2 border-stone-100";
+      const settingLabel = "text-xs font-semibold text-stone-500 mb-1 uppercase tracking-wider";
+      const textInput = "w-full px-3 py-3 border border-stone-300 rounded-lg text-[16px] leading-6 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500";
+
+      return (
+        <div>
+          <button onClick={onBack} className="text-sm text-amber-600 hover:text-amber-700 font-medium mb-6 inline-flex items-center gap-1">
+            &larr; Back to calculator
+          </button>
+
+          <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
+            <h2 className="text-xl font-bold text-stone-900 mb-6">Settings</h2>
+
+            {/* Salon Identity */}
+            <div className={sectionClass}>
+              <h3 className={sectionTitle}>Salon Identity</h3>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Salon Name</label>
+                  <input type="text" className={textInput} value={config.salonName} onChange={(e) => update('salonName', e.target.value)} />
+                </div>
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Tool Name</label>
+                  <input type="text" className={textInput} value={config.toolName} onChange={(e) => update('toolName', e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            {/* Commission Structure */}
+            <div className={sectionClass}>
+              <h3 className={sectionTitle}>Commission Structure</h3>
+              <div className="flex rounded-lg overflow-hidden border border-stone-300 mb-4">
+                <button type="button" onClick={() => update('commissionType', 'flat')} className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${config.commissionType === 'flat' ? 'bg-amber-500 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`}>Flat Rate</button>
+                <button type="button" onClick={() => update('commissionType', 'tiered')} className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${config.commissionType === 'tiered' ? 'bg-amber-500 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`}>Tiered</button>
+              </div>
+              {config.commissionType === 'tiered' && (
+                <div className="space-y-3">
+                  {config.commissionTiers.map((tier, i) => {
+                    const isLast = i === config.commissionTiers.length - 1;
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs text-stone-400 w-12 shrink-0">Up to</span>
+                        {isLast ? (
+                          <input type="text" className={textInput + " flex-1 bg-stone-100 text-stone-400"} value="No limit" disabled />
+                        ) : (
+                          <CurrencyInput value={tier.upTo} onChange={(e) => updateTier(i, 'upTo', parseFloat(e.target.value) || 0)} />
+                        )}
+                        <span className="text-xs text-stone-400 w-8 shrink-0 text-center">Rate</span>
+                        <div className="relative w-24 shrink-0">
+                          <input type="number" className={inputClass + " pr-8"} value={Math.round(tier.rate * 100)} onChange={(e) => updateTier(i, 'rate', (parseFloat(e.target.value) || 0) / 100)} />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-stone-400 pointer-events-none">%</span>
+                        </div>
+                        {!isLast && config.commissionTiers.length > 2 && (
+                          <button type="button" onClick={() => removeTier(i)} className="text-stone-400 hover:text-red-500 transition-colors p-1" title="Remove tier">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button type="button" onClick={addTier} className="text-sm text-amber-600 hover:text-amber-700 font-medium mt-2">+ Add tier</button>
+                </div>
+              )}
+            </div>
+
+            {/* Salon Investments */}
+            <div className={sectionClass}>
+              <h3 className={sectionTitle}>Salon Investments</h3>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Marketing (Annual)</label>
+                  <CurrencyInput value={config.salonInvestments.marketingAnnual} onChange={(e) => updateInvestment('marketingAnnual', parseFloat(e.target.value) || 0)} />
+                </div>
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Marketing Description</label>
+                  <input type="text" className={textInput} value={config.salonInvestments.marketingDescription} onChange={(e) => updateInvestment('marketingDescription', e.target.value)} />
+                </div>
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Laundry (Annual)</label>
+                  <CurrencyInput value={config.salonInvestments.laundryAnnual} onChange={(e) => updateInvestment('laundryAnnual', parseFloat(e.target.value) || 0)} />
+                </div>
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Laundry Description</label>
+                  <input type="text" className={textInput} value={config.salonInvestments.laundryDescription} onChange={(e) => updateInvestment('laundryDescription', e.target.value)} />
+                </div>
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Front Desk (Annual)</label>
+                  <CurrencyInput value={config.salonInvestments.frontDeskAnnual} onChange={(e) => updateInvestment('frontDeskAnnual', parseFloat(e.target.value) || 0)} />
+                </div>
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Front Desk Description</label>
+                  <input type="text" className={textInput} value={config.salonInvestments.frontDeskDescription} onChange={(e) => updateInvestment('frontDeskDescription', e.target.value)} />
+                </div>
+                <div className="flex flex-col">
+                  <label className={settingLabel}>New Clients Per Month</label>
+                  <input type="number" className={inputClass} value={config.salonInvestments.newClientsPerMonth} onChange={(e) => updateInvestment('newClientsPerMonth', parseFloat(e.target.value) || 0)} />
+                </div>
+              </div>
+            </div>
+
+            {/* Defaults */}
+            <div className={sectionClass}>
+              <h3 className={sectionTitle}>Defaults</h3>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Default Tip %</label>
+                  <div className="relative">
+                    <input type="number" className={inputClass + " pr-8"} value={config.defaultTipPercent} onChange={(e) => update('defaultTipPercent', parseFloat(e.target.value) || 0)} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-stone-400 pointer-events-none">%</span>
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <label className={settingLabel}>Default Tab</label>
+                  <select className={textInput} value={config.defaultTab} onChange={(e) => update('defaultTab', e.target.value)}>
+                    <option value="renter-to-commission">Renter → Commission</option>
+                    <option value="commission-to-renter">Commission → Renter</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Reset */}
+            <button type="button" onClick={resetDefaults} className="w-full py-3 px-4 border-2 border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+              Reset to Defaults
+            </button>
+          </div>
+        </div>
+      );
     };
 
     const App = () => {
-      const [activeTab, setActiveTab] = useState(getTabFromHash);
+      const [config, setConfig] = useConfigState('salon-config', SALON_CONFIG);
+      const [activeTab, setActiveTab] = useState(() => getTabFromHash(config.defaultTab));
 
       // Sync hash -> tab on popstate (back/forward)
       useEffect(() => {
-        const onHashChange = () => setActiveTab(getTabFromHash());
+        const onHashChange = () => setActiveTab(getTabFromHash(config.defaultTab));
         window.addEventListener('hashchange', onHashChange);
         return () => window.removeEventListener('hashchange', onHashChange);
-      }, []);
+      }, [config.defaultTab]);
 
       // Sync tab -> hash on click
       const switchTab = (tab) => {
@@ -660,36 +866,56 @@
 
       return (
         <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
-          <div className="mb-8">
-            <h1 className="text-2xl md:text-3xl font-bold text-stone-900 tracking-tight">{SALON_CONFIG.toolName}</h1>
-            <p className="text-sm text-stone-500 mt-1">See the real numbers behind commission vs renting</p>
-            <button
-              onClick={() => window.print()}
-              className="text-xs text-stone-400 hover:text-stone-600 transition-colors print:hidden"
-            >
-              Print Summary
-            </button>
+          <div className="flex items-start justify-between mb-8">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-stone-900 tracking-tight">{config.toolName}</h1>
+              <p className="text-sm text-stone-500 mt-1">See the real numbers behind commission vs renting</p>
+              <button
+                onClick={() => window.print()}
+                className="text-xs text-stone-400 hover:text-stone-600 transition-colors print:hidden"
+              >
+                Print Summary
+              </button>
+            </div>
+            {activeTab !== 'settings' && (
+              <button
+                onClick={() => switchTab('settings')}
+                className="p-2 text-stone-400 hover:text-stone-600 transition-colors print:hidden"
+                title="Settings"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                </svg>
+              </button>
+            )}
           </div>
 
-          {/* Tab bar */}
-          <div className="flex rounded-lg overflow-hidden border border-stone-300 mb-6 print:hidden">
-            <button
-              onClick={() => switchTab('renter-to-commission')}
-              className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'renter-to-commission' ? 'bg-amber-500 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`}
-            >
-              Renter &rarr; Commission
-            </button>
-            <button
-              onClick={() => switchTab('commission-to-renter')}
-              className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'commission-to-renter' ? 'bg-amber-500 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`}
-            >
-              Commission &rarr; Renter
-            </button>
-          </div>
+          {/* Tab bar — hidden on settings page */}
+          {activeTab !== 'settings' && (
+            <div className="flex rounded-lg overflow-hidden border border-stone-300 mb-6 print:hidden">
+              <button
+                onClick={() => switchTab('renter-to-commission')}
+                className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'renter-to-commission' ? 'bg-amber-500 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`}
+              >
+                Renter &rarr; Commission
+              </button>
+              <button
+                onClick={() => switchTab('commission-to-renter')}
+                className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'commission-to-renter' ? 'bg-amber-500 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`}
+              >
+                Commission &rarr; Renter
+              </button>
+            </div>
+          )}
 
-          {activeTab === 'commission-to-renter' ? <CommissionToRenter /> : <RenterToCommission />}
+          {activeTab === 'settings'
+            ? <SettingsPanel config={config} setConfig={setConfig} onBack={() => switchTab(config.defaultTab)} />
+            : activeTab === 'commission-to-renter'
+              ? <CommissionToRenter config={config} />
+              : <RenterToCommission config={config} />
+          }
 
-          <p className="text-center text-xs text-stone-400 mt-8">{SALON_CONFIG.salonName} &middot; {SALON_CONFIG.toolName}</p>
+          <p className="text-center text-xs text-stone-400 mt-8">{config.salonName} &middot; {config.toolName}</p>
         </div>
       );
     };
