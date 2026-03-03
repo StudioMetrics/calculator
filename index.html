@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>Studio Metrics - Commission vs Renter Calculator</title>
+  <title>Commission vs Renter Calculator</title>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -43,6 +43,32 @@
 
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
+
+    // ── Salon Configuration ─────────────────────────────────────────
+    // Edit these values to customize for any salon.
+    const SALON_CONFIG = {
+      salonName: "Studio Los Gatos",
+      toolName: "Studio Metrics",
+      commissionType: "tiered",  // "flat" or "tiered"
+      commissionTiers: [
+        { upTo: 2000, rate: 0.40 },
+        { upTo: 3500, rate: 0.45 },
+        { upTo: 5000, rate: 0.50 },
+        { upTo: 6500, rate: 0.55 },
+        { upTo: Infinity, rate: 0.60 },
+      ],
+      salonInvestments: {
+        marketingAnnual: 33375,
+        marketingDescription: "Google Ads, Yelp, Instagram, SEO",
+        laundryAnnual: 6000,
+        laundryDescription: "Towels, capes, linens — washed daily",
+        frontDeskAnnual: 48000,
+        frontDeskDescription: "Booking, check-in, phone, retail",
+        newClientsPerMonth: 100,
+      },
+      defaultTipPercent: 18,
+      defaultTab: "renter-to-commission",
+    };
 
     // Core math & formatting loaded from calculator.js
     // (formatCurrency, formatPercent, calculateCommissionToRenter, calculateRenterToCommission)
@@ -135,7 +161,12 @@
         setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
       };
 
-      const calculations = useMemo(() => calculateCommissionToRenter(inputs), [inputs]);
+      const calculations = useMemo(() => calculateCommissionToRenter({
+        ...inputs,
+        commissionType: SALON_CONFIG.commissionType,
+        commissionTiers: SALON_CONFIG.commissionTiers,
+        salonInvestments: SALON_CONFIG.salonInvestments,
+      }), [inputs]);
 
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
@@ -225,21 +256,27 @@
                 <span className="text-sm font-semibold text-emerald-700">{formatCurrency(benefit.amount)}/yr</span>
               </div>
             ))}
+            {calculations.salonInvestmentsBreakdown.map((item, i) => (
+              <div key={`si-${i}`} className="flex items-center justify-between gap-2 py-1.5">
+                <span className="text-sm text-stone-700">&#10003; {item.label}</span>
+                <span className="text-sm font-semibold text-emerald-700">{formatCurrency(item.amount)}/yr</span>
+              </div>
+            ))}
             <div className="mt-3 pt-3 border-t border-emerald-200/60 flex flex-wrap justify-between items-baseline gap-x-4">
               <span className="text-sm font-semibold text-emerald-800">Total Benefits Value</span>
-              <span className="text-lg font-bold text-emerald-700">{formatCurrency(calculations.salonBenefitsValue)}/yr</span>
+              <span className="text-lg font-bold text-emerald-700">{formatCurrency(calculations.salonBenefitsValue + calculations.salonInvestmentsValue)}/yr</span>
             </div>
             <p className="text-xs text-stone-500 mt-2">You'd pay for all of these yourself as a renter, plus self-employment tax (~14%)</p>
           </div>
 
-          {/* Tier Breakdown */}
+          {/* Commission Breakdown */}
           <div className="bg-stone-50 rounded-xl p-5 md:p-6 border border-stone-200/60 mb-8">
             <h4 className="text-xs font-semibold text-stone-500 mb-3 uppercase tracking-wider">Weekly Commission Breakdown</h4>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
               <span className="text-sm text-stone-500">Avg Weekly Sales</span>
               <span className="text-sm font-semibold text-stone-700">{formatCurrency(calculations.avgWeeklySales)}</span>
             </div>
-            {calculations.tierBreakdown.map((tier, i) => (
+            {calculations.commissionType === 'tiered' && calculations.tierBreakdown.map((tier, i) => (
               <div key={i} className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100 last:border-b-0">
                 <span className="text-sm text-stone-500">
                   {tier.rangeLabel} <span className="text-stone-400">@ </span>
@@ -258,6 +295,18 @@
                 </span>
               </div>
             ))}
+            {calculations.commissionType === 'flat' && (
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100">
+                <span className="text-sm text-stone-500">
+                  Flat Rate <span className="text-stone-400">@ </span>
+                  <span className="inline-flex items-center">
+                    <input type="number" className="w-12 px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" min="1" max="99" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
+                    <span className="text-stone-400">%</span>
+                  </span>
+                </span>
+                <span className="text-sm font-medium text-stone-700">{formatCurrency(calculations.tierBreakdown[0]?.commission)}</span>
+              </div>
+            )}
             <div className="bg-orange-50 border border-orange-200/60 rounded-lg p-4 mt-4">
               <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
                 <span className="text-sm text-stone-600">Effective Commission Rate</span>
@@ -351,7 +400,12 @@
         setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
       };
 
-      const calculations = useMemo(() => calculateRenterToCommission(inputs), [inputs]);
+      const calculations = useMemo(() => calculateRenterToCommission({
+        ...inputs,
+        commissionType: SALON_CONFIG.commissionType,
+        commissionTiers: SALON_CONFIG.commissionTiers,
+        salonInvestments: SALON_CONFIG.salonInvestments,
+      }), [inputs]);
 
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
@@ -438,14 +492,18 @@
               <span className="text-sm text-stone-500">Avg Weekly Service Income</span>
               <span className="text-sm font-semibold text-stone-700">{formatCurrency(calculations.avgWeeklySales)}</span>
             </div>
-            {calculations.tierBreakdown.map((tier, i) => (
+            {calculations.commissionType === 'tiered' && calculations.tierBreakdown.map((tier, i) => (
               <div key={i} className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100 last:border-b-0">
                 <span className="text-sm text-stone-500">
                   {tier.rangeLabel} <span className="text-stone-400">@ </span>
                   {i === 0 ? (
                     <span className="inline-flex items-center">
-                      <input type="number" className="w-12 px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" min="40" max="50" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)} />
-                      <span className="text-stone-400">%</span>
+                      <select className="px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)}>
+                        <option value="40">40%</option>
+                        <option value="45">45%</option>
+                        <option value="50">50%</option>
+                        <option value="55">55%</option>
+                      </select>
                     </span>
                   ) : (
                     <span className="text-stone-400">{(tier.rate * 100).toFixed(0)}%</span>
@@ -457,14 +515,34 @@
                 </span>
               </div>
             ))}
+            {calculations.commissionType === 'flat' && (
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-100">
+                <span className="text-sm text-stone-500">
+                  Flat Rate <span className="text-stone-400">@ </span>
+                  <span className="inline-flex items-center">
+                    <select className="px-1 py-0.5 border border-stone-300 rounded text-[14px] text-center font-semibold text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 bg-white" value={inputs.startingRate} onChange={(e) => handleChange('startingRate', e.target.value)}>
+                      <option value="40">40%</option>
+                      <option value="45">45%</option>
+                      <option value="50">50%</option>
+                      <option value="55">55%</option>
+                    </select>
+                  </span>
+                </span>
+                <span className="text-sm font-medium text-stone-700">{formatCurrency(calculations.tierBreakdown[0]?.commission)}</span>
+              </div>
+            )}
 
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-t border-stone-300">
               <span className="text-sm text-stone-500 font-bold">Weekly Gross Commission</span>
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.weeklyCommission)}</span>
             </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-stone-500">Tips @ {SALON_CONFIG.defaultTipPercent}%</span>
+              <span className="text-sm font-semibold text-stone-700">+{formatCurrency(inputs.tips)}/yr</span>
+            </div>
 
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
-              <span className="text-sm text-stone-500">Annual Commission + Tips</span>
+              <span className="text-sm text-stone-500">Take-Home Before Taxes</span>
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.commissionIncome)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
@@ -478,6 +556,42 @@
               <span className="text-sm font-medium text-stone-700">Estimated Commission Take-Home</span>
               <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedCommissionIncome)}</span>
             </div>
+          </div>
+
+          {/* What's Included with Commission */}
+          <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-5 md:p-6 mb-8">
+            <h2 className="text-sm font-semibold text-amber-800 mb-4">What's Included with Commission</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {calculations.salonBenefitsBreakdown.map((benefit, i) => (
+                <div key={i} className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-stone-700">&#10003; {benefit.label}</span>
+                  <span className="text-sm font-semibold text-amber-700">{formatCurrency(benefit.amount)}/yr</span>
+                </div>
+              ))}
+              {calculations.salonInvestmentsBreakdown.map((item, i) => (
+                <div key={`si-${i}`} className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-stone-700" title={item.description}>&#10003; {item.label}</span>
+                  <span className="text-sm font-semibold text-amber-700">{formatCurrency(item.amount)}/yr</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-stone-700">&#10003; Lower Payroll Taxes</span>
+                <span className="text-sm font-semibold text-emerald-600">Save {formatCurrency(calculations.seTaxPenalty)}/yr</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-amber-200/60 flex flex-wrap justify-between items-baseline gap-x-4">
+              <span className="text-sm font-semibold text-amber-800">Total Value of Benefits</span>
+              <span className="text-lg font-bold text-amber-700">{formatCurrency(calculations.salonBenefitsValue + calculations.salonInvestmentsValue + calculations.seTaxPenalty)}/yr</span>
+            </div>
+            {/* Client flow callout */}
+            <div className="bg-white/60 border border-amber-200 rounded-lg p-4 mt-4">
+              <p className="text-sm font-semibold text-amber-800">{SALON_CONFIG.salonInvestments.newClientsPerMonth}+ new clients/month</p>
+              <p className="text-xs text-stone-500 mt-1">
+                The salon's front desk, marketing, and walk-in traffic keep your
+                book full — no need to build your own pipeline from scratch.
+              </p>
+            </div>
+            <p className="text-xs text-stone-500 mt-3 leading-relaxed">On commission, the salon handles booking, front desk, supplies ordering, credit card processing, marketing, and laundry — you just show up and do great hair.</p>
           </div>
 
           {/* Section 4: Take-Home Pay Comparison */}
@@ -518,39 +632,6 @@
             </div>
           </div>
 
-          {/* Section 5: What's Included with Commission */}
-          <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-5 md:p-6">
-            <h2 className="text-sm font-semibold text-amber-800 mb-4">What's Included with Commission</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {calculations.salonBenefitsBreakdown.map((benefit, i) => (
-                <div key={i} className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-stone-700">&#10003; {benefit.label}</span>
-                  <span className="text-sm font-semibold text-amber-700">{formatCurrency(benefit.amount)}/yr</span>
-                </div>
-              ))}
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-stone-700">&#10003; Front Desk &amp; Support</span>
-                <span className="text-sm text-stone-400 italic">Included</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-stone-700">&#10003; Lower Payroll Taxes</span>
-                <span className="text-sm font-semibold text-emerald-600">Save {formatCurrency(calculations.seTaxPenalty)}/yr</span>
-              </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-amber-200/60 flex flex-wrap justify-between items-baseline gap-x-4">
-              <span className="text-sm font-semibold text-amber-800">Total Value of Benefits</span>
-              <span className="text-lg font-bold text-amber-700">{formatCurrency(calculations.salonBenefitsValue + calculations.seTaxPenalty)}/yr</span>
-            </div>
-            {/* Client flow callout */}
-            <div className="bg-white/60 border border-amber-200 rounded-lg p-4 mt-4">
-              <p className="text-sm font-semibold text-amber-800">100+ new clients/month</p>
-              <p className="text-xs text-stone-500 mt-1">
-                The salon's front desk, marketing, and walk-in traffic keep your
-                book full — no need to build your own pipeline from scratch.
-              </p>
-            </div>
-            <p className="text-xs text-stone-500 mt-3 leading-relaxed">On commission, the salon handles booking, front desk, supplies ordering, credit card processing, marketing, and laundry — you just show up and do great hair.</p>
-          </div>
         </div>
       );
     };
@@ -558,7 +639,7 @@
     const VALID_TABS = ['commission-to-renter', 'renter-to-commission'];
     const getTabFromHash = () => {
       const hash = window.location.hash.replace('#', '');
-      return VALID_TABS.includes(hash) ? hash : 'renter-to-commission';
+      return VALID_TABS.includes(hash) ? hash : SALON_CONFIG.defaultTab;
     };
 
     const App = () => {
@@ -580,7 +661,7 @@
       return (
         <div className="max-w-3xl mx-auto px-4 py-8 md:py-12">
           <div className="mb-8">
-            <h1 className="text-2xl md:text-3xl font-bold text-stone-900 tracking-tight">Studio Metrics</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-stone-900 tracking-tight">{SALON_CONFIG.toolName}</h1>
             <p className="text-sm text-stone-500 mt-1">See the real numbers behind commission vs renting</p>
             <button
               onClick={() => window.print()}
@@ -590,10 +671,25 @@
             </button>
           </div>
 
-          {/* Tab bar hidden for now — C2R tab still accessible via #commission-to-renter */}
+          {/* Tab bar */}
+          <div className="flex rounded-lg overflow-hidden border border-stone-300 mb-6 print:hidden">
+            <button
+              onClick={() => switchTab('renter-to-commission')}
+              className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'renter-to-commission' ? 'bg-amber-500 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`}
+            >
+              Renter &rarr; Commission
+            </button>
+            <button
+              onClick={() => switchTab('commission-to-renter')}
+              className={`flex-1 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'commission-to-renter' ? 'bg-amber-500 text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`}
+            >
+              Commission &rarr; Renter
+            </button>
+          </div>
+
           {activeTab === 'commission-to-renter' ? <CommissionToRenter /> : <RenterToCommission />}
 
-          <p className="text-center text-xs text-stone-400 mt-8">Studio Los Gatos &middot; StudioMetrics</p>
+          <p className="text-center text-xs text-stone-400 mt-8">{SALON_CONFIG.salonName} &middot; {SALON_CONFIG.toolName}</p>
         </div>
       );
     };

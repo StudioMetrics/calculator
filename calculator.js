@@ -35,9 +35,12 @@ function calculateSelfEmploymentTax(netEarnings) {
 function calculateCommissionToRenter(inputs) {
   const totalIncome = inputs.serviceIncome + inputs.tips;
 
-  // Tiered commission calculation
+  // Commission calculation (flat or tiered)
   const avgWeeklySales = inputs.serviceIncome / 52;
-  const tiered = calculateTieredCommission(avgWeeklySales, (inputs.startingRate || 40) / 100);
+  const commissionType = inputs.commissionType || 'tiered';
+  const tiered = commissionType === 'flat'
+    ? calculateFlatCommission(avgWeeklySales, (inputs.startingRate || 40) / 100)
+    : calculateTieredCommission(avgWeeklySales, (inputs.startingRate || 40) / 100, inputs.commissionTiers);
   const commissionGross = tiered.grossCommission * 52;
 
   // COGS calculations
@@ -80,9 +83,13 @@ function calculateCommissionToRenter(inputs) {
   // Crossover retention %: the client-loss % where renting becomes worse
   const crossoverRetention = ((totalIncome - totalCOGS - currentTakeHome) / totalIncome) * 100;
 
+  // Salon investments (configurable per-salon extras)
+  const si = buildSalonInvestmentsBreakdown(inputs.salonInvestments);
+
   return {
     totalIncome,
     commissionGross,
+    commissionType,
     avgWeeklySales,
     effectiveRate: tiered.effectiveRate,
     tierBreakdown: tiered.tierBreakdown,
@@ -97,13 +104,15 @@ function calculateCommissionToRenter(inputs) {
     maxRentWeekly,
     salonBenefitsValue,
     salonBenefitsBreakdown,
-    crossoverRetention
+    crossoverRetention,
+    salonInvestmentsBreakdown: si.salonInvestmentsBreakdown,
+    salonInvestmentsValue: si.salonInvestmentsValue,
   };
 }
 
 // ── Tiered Commission (weekly marginal brackets) ────────────────────
 
-const COMMISSION_TIERS = [
+const DEFAULT_COMMISSION_TIERS = [
   { upTo: 2000, rate: 0.40 },
   { upTo: 3500, rate: 0.45 },
   { upTo: 5000, rate: 0.50 },
@@ -111,14 +120,19 @@ const COMMISSION_TIERS = [
   { upTo: Infinity, rate: 0.60 }
 ];
 
-function calculateTieredCommission(weeklySales, startingRate = 0.40) {
-  const delta = startingRate - 0.40;
+// Keep old name as alias for backwards compat in browser global scope
+const COMMISSION_TIERS = DEFAULT_COMMISSION_TIERS;
+
+function calculateTieredCommission(weeklySales, startingRate = 0.40, tiers) {
+  const activeTiers = tiers || DEFAULT_COMMISSION_TIERS;
+  const baseRate = activeTiers[0] ? activeTiers[0].rate : 0.40;
+  const delta = startingRate - baseRate;
   let remaining = weeklySales;
   let grossCommission = 0;
   let prevCeiling = 0;
   const tierBreakdown = [];
 
-  for (const tier of COMMISSION_TIERS) {
+  for (const tier of activeTiers) {
     const bracketSize = tier.upTo === Infinity ? Infinity : tier.upTo - prevCeiling;
     const amount = remaining > 0 ? Math.min(remaining, bracketSize) : 0;
     const adjustedRate = Math.min(tier.rate + delta, 0.60);
@@ -137,6 +151,35 @@ function calculateTieredCommission(weeklySales, startingRate = 0.40) {
 
   const effectiveRate = weeklySales > 0 ? grossCommission / weeklySales : 0;
   return { grossCommission, effectiveRate, tierBreakdown };
+}
+
+// ── Flat Commission ─────────────────────────────────────────────────
+
+function calculateFlatCommission(weeklySales, rate) {
+  const grossCommission = weeklySales * rate;
+  return {
+    grossCommission,
+    effectiveRate: rate,
+    tierBreakdown: [{ rangeLabel: 'All Sales', amount: weeklySales, rate, commission: grossCommission }]
+  };
+}
+
+// ── Salon Investments Breakdown ──────────────────────────────────────
+
+function buildSalonInvestmentsBreakdown(salonInvestments) {
+  if (!salonInvestments) return { salonInvestmentsBreakdown: [], salonInvestmentsValue: 0 };
+  const items = [];
+  if (salonInvestments.marketingAnnual > 0) {
+    items.push({ label: 'Salon Marketing', amount: salonInvestments.marketingAnnual, description: salonInvestments.marketingDescription || '' });
+  }
+  if (salonInvestments.laundryAnnual > 0) {
+    items.push({ label: 'Laundry Service', amount: salonInvestments.laundryAnnual, description: salonInvestments.laundryDescription || '' });
+  }
+  if (salonInvestments.frontDeskAnnual > 0) {
+    items.push({ label: 'Front Desk & Support', amount: salonInvestments.frontDeskAnnual, description: salonInvestments.frontDeskDescription || '' });
+  }
+  const salonInvestmentsValue = items.reduce((sum, i) => sum + i.amount, 0);
+  return { salonInvestmentsBreakdown: items, salonInvestmentsValue };
 }
 
 // ── Renter → Commission ─────────────────────────────────────────────
@@ -160,9 +203,12 @@ function calculateRenterToCommission(inputs) {
     (inputs.otherExpenses || 0);
   const currentTakeHome = totalIncome - totalExpenses;
 
-  // Tiered commission calculation
+  // Commission calculation (flat or tiered)
   const avgWeeklySales = inputs.serviceIncome / 52;
-  const tiered = calculateTieredCommission(avgWeeklySales, (inputs.startingRate || 40) / 100);
+  const commissionType = inputs.commissionType || 'tiered';
+  const tiered = commissionType === 'flat'
+    ? calculateFlatCommission(avgWeeklySales, (inputs.startingRate || 40) / 100)
+    : calculateTieredCommission(avgWeeklySales, (inputs.startingRate || 40) / 100, inputs.commissionTiers);
   const annualCommission = tiered.grossCommission * 52;
   const commissionIncome = annualCommission + inputs.tips;
   const difference = commissionIncome - currentTakeHome;
@@ -188,6 +234,8 @@ function calculateRenterToCommission(inputs) {
   ];
   const salonBenefitsValue = salonBenefitsBreakdown.reduce((sum, b) => sum + b.amount, 0);
 
+  // Salon investments (configurable per-salon extras)
+  const si = buildSalonInvestmentsBreakdown(inputs.salonInvestments);
 
   return {
     totalIncome,
@@ -195,6 +243,7 @@ function calculateRenterToCommission(inputs) {
     totalExpenses,
     currentTakeHome,
     avgWeeklySales,
+    commissionType,
     weeklyCommission: tiered.grossCommission,
     effectiveRate: tiered.effectiveRate,
     tierBreakdown: tiered.tierBreakdown,
@@ -208,7 +257,9 @@ function calculateRenterToCommission(inputs) {
     seTaxPenalty,
     salonBenefitsValue,
     salonBenefitsBreakdown,
-};
+    salonInvestmentsBreakdown: si.salonInvestmentsBreakdown,
+    salonInvestmentsValue: si.salonInvestmentsValue,
+  };
 }
 
 // ── Exports (Node / ES-module) & browser global ─────────────────────
@@ -221,6 +272,8 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateCommissionToRenter,
     calculateRenterToCommission,
     calculateTieredCommission,
+    calculateFlatCommission,
+    DEFAULT_COMMISSION_TIERS,
     COMMISSION_TIERS
   };
 }

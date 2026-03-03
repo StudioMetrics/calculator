@@ -6,7 +6,9 @@ const {
   calculateCommissionToRenter,
   calculateRenterToCommission,
   calculateTieredCommission,
-  calculateSelfEmploymentTax
+  calculateFlatCommission,
+  calculateSelfEmploymentTax,
+  DEFAULT_COMMISSION_TIERS
 } = require('./calculator');
 
 // ── Default test inputs (Studio Los Gatos sample data) ──────────────
@@ -427,5 +429,169 @@ describe('cross-calculator consistency', () => {
     const c2r = calculateCommissionToRenter(defaultC2R);
     const tiered = calculateTieredCommission(100000 / 52);
     expect(c2r.commissionGross).toBeCloseTo(tiered.grossCommission * 52, 2);
+  });
+});
+
+// ── Flat Commission ─────────────────────────────────────────────────
+
+describe('calculateFlatCommission', () => {
+  it('calculates gross as weeklySales * rate', () => {
+    const result = calculateFlatCommission(2000, 0.45);
+    expect(result.grossCommission).toBe(900);
+  });
+
+  it('effectiveRate equals the flat rate', () => {
+    const result = calculateFlatCommission(2000, 0.45);
+    expect(result.effectiveRate).toBe(0.45);
+  });
+
+  it('returns single-entry tierBreakdown', () => {
+    const result = calculateFlatCommission(3000, 0.50);
+    expect(result.tierBreakdown).toHaveLength(1);
+    expect(result.tierBreakdown[0].rangeLabel).toBe('All Sales');
+    expect(result.tierBreakdown[0].amount).toBe(3000);
+    expect(result.tierBreakdown[0].rate).toBe(0.50);
+    expect(result.tierBreakdown[0].commission).toBe(1500);
+  });
+
+  it('returns zero for zero sales', () => {
+    const result = calculateFlatCommission(0, 0.40);
+    expect(result.grossCommission).toBe(0);
+    expect(result.effectiveRate).toBe(0.40);
+  });
+});
+
+// ── Custom Tiers ────────────────────────────────────────────────────
+
+describe('calculateTieredCommission with custom tiers', () => {
+  const customTiers = [
+    { upTo: 1000, rate: 0.30 },
+    { upTo: 3000, rate: 0.40 },
+    { upTo: Infinity, rate: 0.50 },
+  ];
+
+  it('uses custom tier brackets', () => {
+    const result = calculateTieredCommission(2000, 0.30, customTiers);
+    // $1,000 * 0.30 + $1,000 * 0.40 = $300 + $400 = $700
+    expect(result.grossCommission).toBe(700);
+    expect(result.tierBreakdown).toHaveLength(3);
+  });
+
+  it('spans all custom brackets', () => {
+    const result = calculateTieredCommission(5000, 0.30, customTiers);
+    // $1,000 * 0.30 + $2,000 * 0.40 + $2,000 * 0.50 = $300 + $800 + $1,000 = $2,100
+    expect(result.grossCommission).toBe(2100);
+  });
+
+  it('applies startingRate delta to custom tiers', () => {
+    // startingRate 0.35 vs base 0.30 → delta 0.05
+    const result = calculateTieredCommission(1000, 0.35, customTiers);
+    // $1,000 * min(0.30 + 0.05, 0.60) = $1,000 * 0.35 = $350
+    expect(result.grossCommission).toBe(350);
+    expect(result.tierBreakdown[0].rate).toBe(0.35);
+  });
+
+  it('DEFAULT_COMMISSION_TIERS is exported and has 5 tiers', () => {
+    expect(DEFAULT_COMMISSION_TIERS).toHaveLength(5);
+    expect(DEFAULT_COMMISSION_TIERS[0].rate).toBe(0.40);
+  });
+});
+
+// ── Flat vs Tiered in both calculators ──────────────────────────────
+
+describe('flat commission mode in calculators', () => {
+  it('calculateRenterToCommission uses flat when commissionType is "flat"', () => {
+    const result = calculateRenterToCommission({ ...defaultR2C, commissionType: 'flat' });
+    expect(result.commissionType).toBe('flat');
+    expect(result.tierBreakdown).toHaveLength(1);
+    expect(result.tierBreakdown[0].rangeLabel).toBe('All Sales');
+    expect(result.effectiveRate).toBe(0.40);
+  });
+
+  it('calculateCommissionToRenter uses flat when commissionType is "flat"', () => {
+    const result = calculateCommissionToRenter({ ...defaultC2R, commissionType: 'flat' });
+    expect(result.commissionType).toBe('flat');
+    expect(result.tierBreakdown).toHaveLength(1);
+    expect(result.effectiveRate).toBe(0.40);
+  });
+
+  it('defaults to tiered when commissionType is not set', () => {
+    const result = calculateRenterToCommission(defaultR2C);
+    expect(result.commissionType).toBe('tiered');
+    expect(result.tierBreakdown).toHaveLength(5);
+  });
+
+  it('both calculators accept custom commissionTiers', () => {
+    const customTiers = [
+      { upTo: 1500, rate: 0.35 },
+      { upTo: Infinity, rate: 0.45 },
+    ];
+    const r2c = calculateRenterToCommission({ ...defaultR2C, commissionTiers: customTiers, startingRate: 35 });
+    expect(r2c.tierBreakdown).toHaveLength(2);
+
+    const c2r = calculateCommissionToRenter({ ...defaultC2R, commissionTiers: customTiers, startingRate: 35 });
+    expect(c2r.tierBreakdown).toHaveLength(2);
+  });
+});
+
+// ── Salon Investments ───────────────────────────────────────────────
+
+const salonInvestments = {
+  marketingAnnual: 33375,
+  marketingDescription: 'Google Ads, Yelp, Instagram, SEO',
+  laundryAnnual: 6000,
+  laundryDescription: 'Towels, capes, linens',
+  frontDeskAnnual: 48000,
+  frontDeskDescription: 'Booking, check-in, phone, retail',
+  newClientsPerMonth: 100,
+};
+
+describe('salon investments in calculateRenterToCommission', () => {
+  it('returns salonInvestmentsBreakdown when salonInvestments provided', () => {
+    const result = calculateRenterToCommission({ ...defaultR2C, salonInvestments });
+    expect(result.salonInvestmentsBreakdown).toHaveLength(3);
+    const labels = result.salonInvestmentsBreakdown.map(i => i.label);
+    expect(labels).toContain('Salon Marketing');
+    expect(labels).toContain('Laundry Service');
+    expect(labels).toContain('Front Desk & Support');
+  });
+
+  it('salonInvestmentsValue is sum of all amounts', () => {
+    const result = calculateRenterToCommission({ ...defaultR2C, salonInvestments });
+    expect(result.salonInvestmentsValue).toBe(33375 + 6000 + 48000);
+  });
+
+  it('includes description on each item', () => {
+    const result = calculateRenterToCommission({ ...defaultR2C, salonInvestments });
+    const marketing = result.salonInvestmentsBreakdown.find(i => i.label === 'Salon Marketing');
+    expect(marketing.description).toBe('Google Ads, Yelp, Instagram, SEO');
+  });
+
+  it('returns empty array and zero value when salonInvestments not provided', () => {
+    const result = calculateRenterToCommission(defaultR2C);
+    expect(result.salonInvestmentsBreakdown).toEqual([]);
+    expect(result.salonInvestmentsValue).toBe(0);
+  });
+
+  it('omits items with zero amounts', () => {
+    const partial = { ...salonInvestments, laundryAnnual: 0, frontDeskAnnual: 0 };
+    const result = calculateRenterToCommission({ ...defaultR2C, salonInvestments: partial });
+    expect(result.salonInvestmentsBreakdown).toHaveLength(1);
+    expect(result.salonInvestmentsBreakdown[0].label).toBe('Salon Marketing');
+    expect(result.salonInvestmentsValue).toBe(33375);
+  });
+});
+
+describe('salon investments in calculateCommissionToRenter', () => {
+  it('returns salonInvestmentsBreakdown when salonInvestments provided', () => {
+    const result = calculateCommissionToRenter({ ...defaultC2R, salonInvestments });
+    expect(result.salonInvestmentsBreakdown).toHaveLength(3);
+    expect(result.salonInvestmentsValue).toBe(33375 + 6000 + 48000);
+  });
+
+  it('returns empty when not provided (backwards compat)', () => {
+    const result = calculateCommissionToRenter(defaultC2R);
+    expect(result.salonInvestmentsBreakdown).toEqual([]);
+    expect(result.salonInvestmentsValue).toBe(0);
   });
 });
