@@ -89,16 +89,6 @@ function calculateCommissionToRenter(inputs) {
   // → L = 100 * (totalIncome - adjustedCurrentTakeHome/AFTER_SE - totalCOGS) / totalIncome
   const crossoverRetention = 100 * (totalIncome - adjustedCurrentTakeHome / AFTER_SE - totalCOGS) / totalIncome;
 
-  // Salon benefits breakdown (what the salon currently provides)
-  const salonBenefitsBreakdown = [
-    { label: 'Booth Rent', amount: yearlyRent },
-    { label: 'Color & Supplies', amount: colorSupplies },
-    { label: 'Marketing', amount: marketing },
-    { label: 'Credit Card Processing', amount: ccFees },
-    { label: 'Support Staff', amount: asstYearly },
-  ];
-  const salonBenefitsValue = salonBenefitsBreakdown.reduce((sum, b) => sum + b.amount, 0);
-
   // Salon investments (configurable per-salon extras)
   const si = buildSalonInvestmentsBreakdown(inputs.salonInvestments);
 
@@ -121,8 +111,6 @@ function calculateCommissionToRenter(inputs) {
     adjustedCurrentTakeHome,
     renterSelfEmploymentTax,
     adjustedScenarios,
-    salonBenefitsValue,
-    salonBenefitsBreakdown,
     crossoverRetention,
     salonInvestmentsBreakdown: si.salonInvestmentsBreakdown,
     salonInvestmentsValue: si.salonInvestmentsValue,

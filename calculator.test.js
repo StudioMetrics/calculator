@@ -150,16 +150,9 @@ describe('calculateCommissionToRenter', () => {
     expect(result.currentTakeHome).toBeCloseTo(result.commissionGross + 32099, 2);
   });
 
-  it('returns salon benefits value equal to total COGS', () => {
-    expect(result.salonBenefitsValue).toBeCloseTo(result.totalCOGS, 2);
-  });
-
-  it('returns salon benefits breakdown with 5 items', () => {
-    expect(result.salonBenefitsBreakdown).toHaveLength(5);
-    const labels = result.salonBenefitsBreakdown.map(b => b.label);
-    expect(labels).toContain('Booth Rent');
-    expect(labels).toContain('Color & Supplies');
-    expect(labels).toContain('Support Staff');
+  it('does not return salonBenefitsBreakdown or salonBenefitsValue', () => {
+    expect(result).not.toHaveProperty('salonBenefitsValue');
+    expect(result).not.toHaveProperty('salonBenefitsBreakdown');
   });
 
   it('calculates crossover retention percentage using tax-adjusted numbers', () => {
