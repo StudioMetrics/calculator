@@ -150,15 +150,6 @@ describe('calculateCommissionToRenter', () => {
     expect(result.currentTakeHome).toBeCloseTo(result.commissionGross + 32099, 2);
   });
 
-  it('calculates break-even weekly rent using tax-adjusted numbers', () => {
-    const AFTER_SE = 1 - 0.9235 * 0.153;
-    const otherCOGS = result.totalCOGS - result.yearlyRent;
-    const expected = (result.totalIncome - otherCOGS - result.adjustedCurrentTakeHome / AFTER_SE) / 52;
-    expect(result.maxRentWeekly).toBeCloseTo(expected, 2);
-    expect(typeof result.maxRentWeekly).toBe('number');
-    expect(isFinite(result.maxRentWeekly)).toBe(true);
-  });
-
   it('returns salon benefits value equal to total COGS', () => {
     expect(result.salonBenefitsValue).toBeCloseTo(result.totalCOGS, 2);
   });

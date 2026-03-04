@@ -178,12 +178,14 @@
         weeklyRent: 525,
         colorSupplies: 10125,
         marketing: 1200,
-        assistantHourly: 20,
-        assistantHours: 6,
-        assistantDays: 4,
-        asstTaxPct: 7,
+        assistantHourly: 0,
+        assistantHours: 0,
+        assistantDays: 0,
+        asstTaxPct: 0,
         ccFeePct: 2.9,
       });
+
+      const [showAssistant, setShowAssistant] = useState(inputs.assistantHourly > 0);
 
       const handleChange = (field, value) => {
         setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
@@ -238,6 +240,24 @@
             </div>
             <div className="grid grid-cols-1 gap-4 mb-4">
               <div className="flex flex-col">
+                <label className={labelClass}>Credit Card Fee</label>
+                <div className="relative">
+                  <input type="number" className={inputClass + " pr-8"} value={inputs.ccFeePct} onChange={(e) => handleChange('ccFeePct', e.target.value)} />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-stone-400 pointer-events-none">%</span>
+                </div>
+              </div>
+            </div>
+            <div className="mb-4">
+              <button type="button" onClick={() => setShowAssistant(prev => !prev)} className="flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700 transition-colors">
+                <span className={`inline-block transition-transform ${showAssistant ? 'rotate-90' : ''}`}>&#9654;</span>
+                {showAssistant ? 'Hide assistant costs' : 'Add assistant costs'}
+                {inputs.assistantHourly > 0 && !showAssistant && <span className="text-xs text-stone-400">({formatCurrency(calculations.asstYearly)}/yr)</span>}
+              </button>
+            </div>
+            {showAssistant && (
+            <React.Fragment>
+            <div className="grid grid-cols-1 gap-4 mb-4">
+              <div className="flex flex-col">
                 <label className={labelClass}>Assistant Hourly Rate</label>
                 <CurrencyInput value={inputs.assistantHourly} onChange={(e) => handleChange('assistantHourly', e.target.value)} />
               </div>
@@ -250,19 +270,14 @@
                 <input type="number" className={inputClass} value={inputs.assistantDays} onChange={(e) => handleChange('assistantDays', e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-4 mb-4">
               <div className="flex flex-col">
                 <label className={labelClass}>Assistant Tax %</label>
                 <input type="number" className={inputClass} value={inputs.asstTaxPct} onChange={(e) => handleChange('asstTaxPct', e.target.value)} />
               </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Credit Card Fee</label>
-                <div className="relative">
-                  <input type="number" className={inputClass + " pr-8"} value={inputs.ccFeePct} onChange={(e) => handleChange('ccFeePct', e.target.value)} />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-stone-400 pointer-events-none">%</span>
-                </div>
-              </div>
             </div>
+            </React.Fragment>
+            )}
           </div>
 
           {/* Salon Benefits You Currently Receive */}
@@ -335,11 +350,16 @@
             )}
             <div className="bg-orange-50 border border-orange-200/60 rounded-lg p-4 mt-4">
               <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className="text-sm text-stone-600">Effective Commission Rate</span>
+                <span className="text-sm text-stone-600">Blended Commission Rate</span>
                 <span className="text-xl sm:text-2xl font-bold text-orange-700">
                   {(calculations.effectiveRate * 100).toFixed(1)}%
                 </span>
               </div>
+              <p className="text-xs text-stone-400 mt-1">
+                {calculations.commissionType === 'flat'
+                  ? 'Flat rate on all services — before tips'
+                  : 'Weighted average across all tier brackets — services only, before tips'}
+              </p>
               <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1 mt-2">
                 <span className="text-sm text-stone-600">Annual Commission Gross</span>
                 <span className="text-lg font-bold text-orange-700">{formatCurrency(calculations.commissionGross)}</span>
@@ -368,27 +388,46 @@
 
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
               <span className="text-sm text-stone-500">Current Commission Take-Home</span>
-              <span className="text-lg font-bold text-emerald-700">{formatCurrency(calculations.currentTakeHome)}</span>
+              <span className="text-lg font-bold text-stone-700">{formatCurrency(calculations.currentTakeHome)}</span>
             </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-1.5 pl-4 border-b border-stone-100">
+              <span className="text-xs text-stone-400">FICA (7.65%)</span>
+              <span className="text-sm text-red-600">−{formatCurrency(calculations.commissionFica)}</span>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-4 mt-3 mb-4">
+              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
+                <span className="text-sm font-medium text-stone-600">After-Tax Commission Take-Home</span>
+                <span className="text-xl sm:text-2xl font-bold text-emerald-700">{formatCurrency(calculations.adjustedCurrentTakeHome)}</span>
+              </div>
+            </div>
+
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
               <span className="text-sm text-stone-500">Total Renter COGS</span>
               <span className="text-lg font-bold text-red-700">{formatCurrency(calculations.totalCOGS)}</span>
             </div>
-
-            <div className="bg-amber-50 border border-amber-200/60 rounded-lg p-4 mt-4">
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
+              <span className="text-sm text-stone-500">Renter Take-Home (no client loss)</span>
+              <span className="text-lg font-bold text-stone-700">{formatCurrency(calculations.scenarios[0].takeHome)}</span>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-1.5 pl-4 border-b border-stone-100">
+              <span className="text-xs text-stone-400">Self-Employment Tax (15.3%)</span>
+              <span className="text-sm text-red-600">−{formatCurrency(calculations.renterSelfEmploymentTax)}</span>
+            </div>
+            <div className="bg-amber-50 border border-amber-200/60 rounded-lg p-4 mt-3">
               <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className="text-sm text-stone-600">Renter Take-Home (no client loss)</span>
-                <span className="text-xl sm:text-2xl font-bold text-amber-700">{formatCurrency(calculations.scenarios[0].takeHome)}</span>
+                <span className="text-sm font-medium text-stone-600">After-Tax Renter Take-Home</span>
+                <span className="text-xl sm:text-2xl font-bold text-amber-700">{formatCurrency(calculations.adjustedScenarios[0].adjustedTakeHome)}</span>
               </div>
             </div>
 
             {/* Scenarios */}
             <div className="mt-6">
-              <h3 className="text-sm font-semibold text-stone-700 mb-3 pb-2 border-b-2 border-stone-100">Renter Scenarios (Client Retention)</h3>
-              {calculations.scenarios.map(({ retention, takeHome }) => {
+              <h3 className="text-sm font-semibold text-stone-700 mb-3 pb-2 border-b-2 border-stone-100">After-Tax Renter Scenarios (Client Retention)</h3>
+              {calculations.adjustedScenarios.map(({ retention, adjustedTakeHome }) => {
+                const prev = calculations.adjustedScenarios.find(s => s.retention === retention - 10);
                 const isCrossover = retention > 0 &&
-                  calculations.scenarios.find(s => s.retention === retention - 10)?.takeHome >= calculations.currentTakeHome &&
-                  takeHome < calculations.currentTakeHome;
+                  prev?.adjustedTakeHome >= calculations.adjustedCurrentTakeHome &&
+                  adjustedTakeHome < calculations.adjustedCurrentTakeHome;
                 return (
                   <React.Fragment key={retention}>
                     {isCrossover && (
@@ -402,8 +441,8 @@
                       <span className="text-sm text-stone-600">
                         {retention === 0 ? 'You keep all your clients' : `You keep ${100 - retention}% of your clients`}
                       </span>
-                      <span className={`text-base font-semibold ${takeHome > calculations.currentTakeHome ? 'text-emerald-700' : 'text-red-700'}`}>
-                        {formatCurrency(takeHome)}
+                      <span className={`text-base font-semibold ${adjustedTakeHome > calculations.adjustedCurrentTakeHome ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {formatCurrency(adjustedTakeHome)}
                       </span>
                     </div>
                   </React.Fragment>
@@ -411,13 +450,6 @@
               })}
             </div>
 
-            <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-4 mt-5">
-              <div className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1">
-                <span className="text-sm text-stone-600">Break-Even Weekly Rent</span>
-                <span className="text-xl sm:text-2xl font-bold text-emerald-700">{formatCurrency(calculations.maxRentWeekly)}/week</span>
-              </div>
-              <p className="text-xs text-stone-400 mt-2">Maximum rent you could pay to match current commission income. Studio suites in the area typically rent for $250–$400/week</p>
-            </div>
           </div>
         </div>
       );

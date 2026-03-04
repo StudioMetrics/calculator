@@ -80,15 +80,10 @@ function calculateCommissionToRenter(inputs) {
     return { ...s, adjustedTakeHome: s.takeHome - se.seTax };
   });
 
-  // Tax-adjusted break-even rent and crossover
+  // Tax-adjusted crossover retention
   // SE tax is proportional: after_tax = pre_tax * AFTER_SE_FACTOR
   const SE_FACTOR = 0.9235 * 0.153;   // ≈ 0.1413
   const AFTER_SE = 1 - SE_FACTOR;     // ≈ 0.8587
-  const otherCOGS = totalCOGS - yearlyRent;
-
-  // Max rent: solve totalIncome - R*52 - otherCOGS - SE_tax(...) = adjustedCurrentTakeHome
-  // When pre-tax > 0: (totalIncome - R*52 - otherCOGS) * AFTER_SE = adjustedCurrentTakeHome
-  const maxRentWeekly = (totalIncome - otherCOGS - adjustedCurrentTakeHome / AFTER_SE) / 52;
 
   // Crossover: solve totalIncome*(1-L/100) - totalCOGS - SE_tax(...) = adjustedCurrentTakeHome
   // → L = 100 * (totalIncome - adjustedCurrentTakeHome/AFTER_SE - totalCOGS) / totalIncome
@@ -126,7 +121,6 @@ function calculateCommissionToRenter(inputs) {
     adjustedCurrentTakeHome,
     renterSelfEmploymentTax,
     adjustedScenarios,
-    maxRentWeekly,
     salonBenefitsValue,
     salonBenefitsBreakdown,
     crossoverRetention,
