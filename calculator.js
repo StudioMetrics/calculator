@@ -67,8 +67,32 @@ function calculateCommissionToRenter(inputs) {
 
   // Break-even rent: max weekly rent that matches current commission income
   const currentTakeHome = commissionGross + inputs.tips;
-  const maxRentWeekly =
-    (currentTakeHome + totalCOGS - totalIncome) / 52;
+
+  // Tax comparison (same logic as R2C)
+  const commissionFica = currentTakeHome * 0.0765;
+  const adjustedCurrentTakeHome = currentTakeHome - commissionFica;
+
+  const renterSeTax0 = calculateSelfEmploymentTax(scenarios[0].takeHome);
+  const renterSelfEmploymentTax = renterSeTax0.seTax;
+
+  const adjustedScenarios = scenarios.map((s) => {
+    const se = calculateSelfEmploymentTax(s.takeHome);
+    return { ...s, adjustedTakeHome: s.takeHome - se.seTax };
+  });
+
+  // Tax-adjusted break-even rent and crossover
+  // SE tax is proportional: after_tax = pre_tax * AFTER_SE_FACTOR
+  const SE_FACTOR = 0.9235 * 0.153;   // ≈ 0.1413
+  const AFTER_SE = 1 - SE_FACTOR;     // ≈ 0.8587
+  const otherCOGS = totalCOGS - yearlyRent;
+
+  // Max rent: solve totalIncome - R*52 - otherCOGS - SE_tax(...) = adjustedCurrentTakeHome
+  // When pre-tax > 0: (totalIncome - R*52 - otherCOGS) * AFTER_SE = adjustedCurrentTakeHome
+  const maxRentWeekly = (totalIncome - otherCOGS - adjustedCurrentTakeHome / AFTER_SE) / 52;
+
+  // Crossover: solve totalIncome*(1-L/100) - totalCOGS - SE_tax(...) = adjustedCurrentTakeHome
+  // → L = 100 * (totalIncome - adjustedCurrentTakeHome/AFTER_SE - totalCOGS) / totalIncome
+  const crossoverRetention = 100 * (totalIncome - adjustedCurrentTakeHome / AFTER_SE - totalCOGS) / totalIncome;
 
   // Salon benefits breakdown (what the salon currently provides)
   const salonBenefitsBreakdown = [
@@ -79,9 +103,6 @@ function calculateCommissionToRenter(inputs) {
     { label: 'Support Staff', amount: asstYearly },
   ];
   const salonBenefitsValue = salonBenefitsBreakdown.reduce((sum, b) => sum + b.amount, 0);
-
-  // Crossover retention %: the client-loss % where renting becomes worse
-  const crossoverRetention = ((totalIncome - totalCOGS - currentTakeHome) / totalIncome) * 100;
 
   // Salon investments (configurable per-salon extras)
   const si = buildSalonInvestmentsBreakdown(inputs.salonInvestments);
@@ -101,6 +122,10 @@ function calculateCommissionToRenter(inputs) {
     totalCOGS,
     scenarios,
     currentTakeHome,
+    commissionFica,
+    adjustedCurrentTakeHome,
+    renterSelfEmploymentTax,
+    adjustedScenarios,
     maxRentWeekly,
     salonBenefitsValue,
     salonBenefitsBreakdown,

@@ -150,10 +150,10 @@ describe('calculateCommissionToRenter', () => {
     expect(result.currentTakeHome).toBeCloseTo(result.commissionGross + 32099, 2);
   });
 
-  it('calculates break-even weekly rent without tip deduction', () => {
-    // (currentTakeHome + totalCOGS - totalIncome) / 52
-    const expected =
-      (result.currentTakeHome + result.totalCOGS - result.totalIncome) / 52;
+  it('calculates break-even weekly rent using tax-adjusted numbers', () => {
+    const AFTER_SE = 1 - 0.9235 * 0.153;
+    const otherCOGS = result.totalCOGS - result.yearlyRent;
+    const expected = (result.totalIncome - otherCOGS - result.adjustedCurrentTakeHome / AFTER_SE) / 52;
     expect(result.maxRentWeekly).toBeCloseTo(expected, 2);
     expect(typeof result.maxRentWeekly).toBe('number');
     expect(isFinite(result.maxRentWeekly)).toBe(true);
@@ -171,9 +171,33 @@ describe('calculateCommissionToRenter', () => {
     expect(labels).toContain('Support Staff');
   });
 
-  it('calculates crossover retention percentage', () => {
-    const expected = ((result.totalIncome - result.totalCOGS - result.currentTakeHome) / result.totalIncome) * 100;
+  it('calculates crossover retention percentage using tax-adjusted numbers', () => {
+    const AFTER_SE = 1 - 0.9235 * 0.153;
+    const expected = 100 * (result.totalIncome - result.adjustedCurrentTakeHome / AFTER_SE - result.totalCOGS) / result.totalIncome;
     expect(result.crossoverRetention).toBeCloseTo(expected, 2);
+  });
+
+  it('calculates commissionFica at 7.65% of currentTakeHome', () => {
+    expect(result.commissionFica).toBeCloseTo(result.currentTakeHome * 0.0765, 2);
+  });
+
+  it('calculates adjustedCurrentTakeHome as currentTakeHome minus FICA', () => {
+    expect(result.adjustedCurrentTakeHome).toBeCloseTo(result.currentTakeHome - result.commissionFica, 2);
+  });
+
+  it('calculates renterSelfEmploymentTax via calculateSelfEmploymentTax', () => {
+    expect(result.renterSelfEmploymentTax).toBeGreaterThan(0);
+    const expected = calculateSelfEmploymentTax(result.scenarios[0].takeHome);
+    expect(result.renterSelfEmploymentTax).toBeCloseTo(expected.seTax, 2);
+  });
+
+  it('produces 6 adjustedScenarios with adjustedTakeHome <= takeHome', () => {
+    expect(result.adjustedScenarios).toHaveLength(6);
+    result.adjustedScenarios.forEach((s, i) => {
+      expect(s.adjustedTakeHome).toBeLessThanOrEqual(result.scenarios[i].takeHome);
+      const expectedSE = calculateSelfEmploymentTax(result.scenarios[i].takeHome).seTax;
+      expect(s.adjustedTakeHome).toBeCloseTo(result.scenarios[i].takeHome - expectedSE, 2);
+    });
   });
 
   it('uses custom starting rate when provided', () => {
