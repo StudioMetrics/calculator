@@ -273,6 +273,42 @@ describe('calculateTieredCommission', () => {
     const withoutArg = calculateTieredCommission(5000);
     expect(withDefault.grossCommission).toBe(withoutArg.grossCommission);
   });
+
+  it('honors starting rate above 60% (90%)', () => {
+    const result = calculateTieredCommission(1500, 0.90);
+    expect(result.effectiveRate).toBe(0.90);
+    expect(result.tierBreakdown[0].rate).toBe(0.90);
+
+    const full = calculateTieredCommission(8000, 0.90);
+    // delta = 0.50: tiers clamp at 90%, not 60%
+    for (const tier of full.tierBreakdown) {
+      expect(tier.rate).toBeLessThanOrEqual(0.90);
+    }
+    // $2,000*0.90 + $1,500*0.90 + $1,500*0.90 + $1,500*0.90 + $1,500*0.90 = $7,200
+    expect(full.grossCommission).toBe(7200);
+  });
+
+  it('keeps 60% starting rate behavior identical to old cap', () => {
+    const result = calculateTieredCommission(8000, 0.60);
+    for (const tier of result.tierBreakdown) {
+      expect(tier.rate).toBe(0.60);
+    }
+    expect(result.grossCommission).toBe(8000 * 0.60);
+  });
+
+  it('leaves default 40% starting rate output unchanged', () => {
+    const result = calculateTieredCommission(8000, 0.40);
+    // $2,000*0.40 + $1,500*0.45 + $1,500*0.50 + $1,500*0.55 + $1,500*0.60 = $3,950
+    expect(result.grossCommission).toBe(3950);
+    expect(result.tierBreakdown.map(t => t.rate)).toEqual([0.40, 0.45, 0.50, 0.55, 0.60]);
+  });
+
+  it('flat commission path is unaffected by the tier cap lift', () => {
+    const result = calculateFlatCommission(3000, 0.90);
+    expect(result.grossCommission).toBe(2700);
+    expect(result.effectiveRate).toBe(0.90);
+    expect(result.tierBreakdown[0].rate).toBe(0.90);
+  });
 });
 
 // ── Self-Employment Tax ─────────────────────────────────────────────

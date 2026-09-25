@@ -254,6 +254,7 @@ function calculateTieredCommission(weeklySales, startingRate = 0.40, tiers) {
   const activeTiers = tiers || DEFAULT_COMMISSION_TIERS;
   const baseRate = activeTiers[0] ? activeTiers[0].rate : 0.40;
   const delta = startingRate - baseRate;
+  const ceiling = Math.max(startingRate, ...activeTiers.map(t => t.rate));
   let remaining = weeklySales;
   let grossCommission = 0;
   let prevCeiling = 0;
@@ -262,7 +263,7 @@ function calculateTieredCommission(weeklySales, startingRate = 0.40, tiers) {
   for (const tier of activeTiers) {
     const bracketSize = tier.upTo === Infinity ? Infinity : tier.upTo - prevCeiling;
     const amount = remaining > 0 ? Math.min(remaining, bracketSize) : 0;
-    const adjustedRate = Math.min(tier.rate + delta, 0.60);
+    const adjustedRate = Math.min(tier.rate + delta, ceiling);
     const commission = amount * adjustedRate;
 
     const lowerLabel = prevCeiling === 0 ? '$0' : formatCurrency(prevCeiling + 1);
