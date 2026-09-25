@@ -1,49 +1,82 @@
 # Studio Metrics Calculator
 
-A simple React-based calculator for salon stylists to evaluate Commission vs Renter compensation models.
+Free commission vs renting calculator for salon stylists and owners.
 
-## Architecture & Decisions
+## Why this exists
 
-**Why a single HTML file?**
-We built this as a single `index.html` file using React via CDN rather than a full toolchain (no npm, Vite, or Webpack). 
-- **Absolute simplicity:** It can be hosted anywhere for free without a build process (currently on GitHub Pages).
-- **Embedded ready:** The logic is contained entirely in one place, making it easy to drop into an iFrame or another marketing site later.
-- **Immediate execution:** Perfect for rapid prototyping and validation of the math.
+I run a hybrid rental/commission salon. I built this to have honest, number-driven conversations with stylists who are evaluating commission vs renting a chair. Commission is better for the salon — you control quality, output, and client experience, and you make more money — but convincing a stylist used to the independence of renting isn't easy. This tool lets the numbers speak.
 
-## Features
+It's also offered free publicly as the first entry point into the Studio Metrics ecosystem. See [Product Vision](#product-vision) below and [STRATEGY.md](STRATEGY.md) for the full plan.
+
+## What it does
+
+Three views, accessible via tab navigation or direct hash links:
+
+### Renter → Commission (default)
+
+Shows renters what they'd actually gain by switching to commission. Highlights the hidden costs of renting that most stylists don't think about:
+- **SE tax penalty**: 1099 renters pay 15.3% self-employment tax vs 7.65% FICA as a W-2 commission employee — that's real money
+- **Self-marketing burden**: Renters pay for their own ads, social, Yelp — the salon covers all of this for commission stylists
+- **Admin overhead**: Booking, front desk, supplies, CC processing — all handled by the salon
+
+Shows a side-by-side comparison of take-home pay with full cost transparency.
 
 ### Commission → Renter
-- Calculate equivalent rent based on current commission earnings
-- Account for proportional salon costs (color, supplies, marketing, CC fees)
-- Model client retention scenarios (0-50% client loss)
-- Find break-even weekly rent
 
-### Renter → Commission  
-- Calculate required commission percentage to match current renter income
-- Compare against different commission splits
-- See income difference at various rates
+Shows commission stylists the real cost of going independent. The interactive **client retention slider** models the risk of losing clients when you leave — because not everyone follows you. Calculates true renter income accounting for lost clients, SE tax, and self-funded expenses.
 
-## Formula Reference
+### Settings
 
-Based on Soulver worksheet logic from Studio Los Gatos. We used a **proportional COGS allocation model**:
+Fully configurable for any salon:
+- Commission structure: flat rate or tiered brackets
+- Salon investments: marketing spend, laundry, front desk costs, new clients/month
+- Branding: salon name and tool name
+- All settings persist in localStorage
 
-- **Stylist % of Usage**: `stylist_hours / total_stylist_hours`
-- **COGS Allocation**: proportional costs based on usage percentage
-  - Rent: weekly × 52
-  - Assistant: hourly × hours × days × (1 + tax%) × 52
-  - Color/Supplies: usage% × salon_cogs
-  - Marketing: usage% × salon_marketing
-  - CC Fees: service_income × 2.9%
+## Architecture
 
-## Usage
+**Single `index.html`** — React 18 + Tailwind CSS + Babel via CDN, no build step.
 
-Open `index.html` directly in a browser, or serve locally:
+Why no build toolchain:
+- **Deploy anywhere**: GitHub Pages, Netlify, any static host, embeddable via iframe
+- **Zero config**: No npm install needed to run — just open the file or serve it
+- **Rapid iteration**: Change the file, refresh the browser
+
+Supporting files:
+- **`calculator.js`** — Extracted pure financial logic (SE tax, commission calculations, COGS allocation). Testable and importable independently.
+- **`calculator.test.js`** — Unit tests via Vitest covering both calculator directions
+- **`package.json`** — Dev dependency on Vitest for testing only
+
+Other details:
+- **State persistence**: All inputs and settings survive refresh via localStorage
+- **Hash routing**: Direct tab linking — `#renter-to-commission`, `#commission-to-renter`, `#settings`
+- **Mobile responsive**: Designed for stylists on the salon floor using their phone
+
+## Product vision
+
+This calculator is the first free tool in a broader ecosystem. Two paid products follow:
+
+- **RentSalonChairs** — A platform for salon owners to manage their renters (paid SaaS)
+- **Studio Metrics** — A suite of salon business tools: booking, KPI reports, HR/management, and client CRM (paid SaaS)
+
+See [STRATEGY.md](STRATEGY.md) for the full go-to-market plan.
+
+## Running locally
 
 ```bash
 python3 -m http.server 8080
 # Open http://localhost:8080
 ```
 
+Or just open `index.html` directly in a browser.
+
+### Tests
+
+```bash
+npm install   # one-time: installs Vitest
+npm test
+```
+
 ## License
 
-Private - StudioMetrics
+Private — StudioMetrics
