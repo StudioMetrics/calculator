@@ -9,6 +9,7 @@ const {
   calculateFlatCommission,
   calculateSelfEmploymentTax,
   calculateCAIncomeTax,
+  calculateAfterTaxReality,
   DEFAULT_COMMISSION_TIERS,
   PAYROLL_TAX_RATE,
   SS_WAGE_BASE_2025
@@ -697,5 +698,121 @@ describe('salon investments in calculateCommissionToRenter', () => {
     const result = calculateCommissionToRenter(defaultC2R);
     expect(result.salonInvestmentsBreakdown).toEqual([]);
     expect(result.salonInvestmentsValue).toBe(0);
+  });
+});
+
+// ── After-Tax Reality ───────────────────────────────────────────────
+
+describe('calculateAfterTaxReality', () => {
+  const reality = calculateAfterTaxReality(defaultC2R);
+
+  // Independent recomputation from raw inputs + the already-tested tax
+  // primitives (SE tax, CA brackets, payroll rate) — no reuse of
+  // calculateCommissionToRenter output.
+  const totalIncome = 100000 + 32099;
+  const cogs =
+    525 * 52 +                        // booth rent
+    10125 +                           // color & supplies
+    (100000 + 32099) * 0.029 +        // cc fees (income + tips)
+    3500 +                            // marketing
+    20 * 6 * 4 * (1 + 7 / 100) * 52;  // assistant incl. tax load
+  const renterPreTax = totalIncome - cogs;
+  const expectedRenterSe = calculateSelfEmploymentTax(renterPreTax).seTax;
+  const expectedRenterCa = calculateCAIncomeTax(renterPreTax);
+  const expectedRenterAfterTax = renterPreTax - expectedRenterSe - expectedRenterCa;
+
+  const commissionComp =
+    calculateTieredCommission(100000 / 52).grossCommission * 52 + 32099;
+  const expectedCommissionPayroll = commissionComp * PAYROLL_TAX_RATE;
+  const expectedCommissionCa = calculateCAIncomeTax(commissionComp);
+  const expectedCommissionAfterTax =
+    commissionComp - expectedCommissionPayroll - expectedCommissionCa;
+
+  it('computes the renter side at 0% client loss with SE + CA taxes', () => {
+    expect(reality.renterPreTax).toBeCloseTo(renterPreTax, 2);
+    expect(reality.renterSeTax).toBeCloseTo(expectedRenterSe, 2);
+    expect(reality.renterCaTax).toBeCloseTo(expectedRenterCa, 2);
+    expect(reality.renterAfterTax).toBeCloseTo(expectedRenterAfterTax, 2);
+  });
+
+  it('computes the commission side with 8.85% payroll + CA taxes', () => {
+    expect(reality.commissionComp).toBeCloseTo(commissionComp, 2);
+    expect(reality.commissionPayrollTax).toBeCloseTo(expectedCommissionPayroll, 2);
+    expect(reality.commissionCaTax).toBeCloseTo(expectedCommissionCa, 2);
+    expect(reality.commissionAfterTax).toBeCloseTo(expectedCommissionAfterTax, 2);
+  });
+
+  it('derives gapAfterTax (renter − commission after tax) and gapMonthly', () => {
+    expect(reality.gapAfterTax).toBeCloseTo(
+      expectedRenterAfterTax - expectedCommissionAfterTax, 2
+    );
+    expect(reality.gapMonthly).toBeCloseTo(reality.gapAfterTax / 12, 6);
+  });
+
+  it('builds a retention table for 0–50% client loss', () => {
+    expect(reality.retentionTable).toHaveLength(6);
+    expect(reality.retentionTable.map(r => r.clientsLost)).toEqual([0, 10, 20, 30, 40, 50]);
+    expect(reality.retentionTable[0].renterAfterTax).toBeCloseTo(reality.renterAfterTax, 2);
+    expect(reality.retentionTable[0].commissionAdvantage).toBeCloseTo(
+      reality.commissionAfterTax - reality.renterAfterTax, 2
+    );
+  });
+
+  it('retention table is monotonic: renter after-tax falls, commission advantage rises', () => {
+    for (let i = 1; i < reality.retentionTable.length; i++) {
+      expect(reality.retentionTable[i].renterAfterTax)
+        .toBeLessThan(reality.retentionTable[i - 1].renterAfterTax);
+      expect(reality.retentionTable[i].commissionAdvantage)
+        .toBeGreaterThan(reality.retentionTable[i - 1].commissionAdvantage);
+    }
+  });
+
+  it('shows a commission-wins crossover for a mid-income book', () => {
+    // Lighter-COGS variant: renter still ahead with a full book, but any
+    // meaningful client loss flips the comparison to commission.
+    const midIncome = calculateAfterTaxReality({
+      ...defaultC2R, assistantHourly: 0, assistantHours: 0, assistantDays: 0,
+    });
+    expect(midIncome.retentionTable[0].commissionAdvantage).toBeLessThan(0);
+    const winners = midIncome.retentionTable.filter(r => r.commissionAdvantage > 0);
+    expect(winners.length).toBeGreaterThan(0);
+    expect(winners[0].clientsLost).toBeGreaterThan(0);
+  });
+
+  it('salonValue itemizes exactly the totalCOGS components', () => {
+    const labels = reality.salonValue.items.map(i => i.label);
+    expect(labels).toEqual([
+      'Booth Rent',
+      'Color & Supplies',
+      'Credit Card Processing',
+      'Marketing',
+      'Assistant Support',
+    ]);
+    expect(reality.salonValue.total).toBeCloseTo(cogs, 2);
+    const sum = reality.salonValue.items.reduce((s, i) => s + i.amount, 0);
+    expect(sum).toBeCloseTo(reality.salonValue.total, 2);
+  });
+
+  it('works with the assistant disabled and with flat commission', () => {
+    const noAsst = calculateAfterTaxReality({
+      ...defaultC2R, assistantHourly: 0, assistantHours: 0, assistantDays: 0,
+    });
+    expect(noAsst.salonValue.items.find(i => i.label === 'Assistant Support').amount).toBe(0);
+    expect(noAsst.salonValue.total).toBeCloseTo(
+      525 * 52 + 10125 + (100000 + 32099) * 0.029 + 3500, 2
+    );
+
+    const flat = calculateAfterTaxReality({
+      ...defaultC2R, commissionType: 'flat', startingRate: 40,
+    });
+    expect(flat.commissionComp).toBeCloseTo(100000 * 0.40 + 32099, 2);
+  });
+
+  it('stays finite for zero income', () => {
+    const zero = calculateAfterTaxReality({ ...defaultC2R, serviceIncome: 0, tips: 0 });
+    [zero.renterAfterTax, zero.commissionAfterTax, zero.gapAfterTax, zero.gapMonthly].forEach(v => {
+      expect(Number.isFinite(v)).toBe(true);
+    });
+    expect(zero.commissionComp).toBe(0);
   });
 });

@@ -166,6 +166,77 @@ function calculateCommissionToRenter(inputs) {
   };
 }
 
+// ── After-Tax Reality (renter vs commission after employment + CA taxes) ──
+
+/**
+ * Assembles the "after-tax reality" comparison from the C2R inputs.
+ *
+ * Pre-tax "take-home" numbers are a tax illusion: booth-rent income also owes
+ * SE tax (15.3% with the SS wage-base cap) and commission income owes the
+ * 8.85% employee payroll share. Est. CA income tax is computed on pre-tax
+ * income for both sides (same basis as the UI rows) and narrows the gap
+ * further. Everything derives from the inputs — no fixed dollar figures.
+ */
+function calculateAfterTaxReality(inputs) {
+  const c2r = calculateCommissionToRenter(inputs);
+
+  // Renter side at full book (0% client loss)
+  const renterPreTax = c2r.scenarios[0].takeHome;
+  const renterSeTax = calculateSelfEmploymentTax(renterPreTax).seTax;
+  const renterCaTax = calculateCAIncomeTax(renterPreTax);
+  const renterAfterTax = renterPreTax - renterSeTax - renterCaTax;
+
+  // Commission side: gross commission + tips, reduced by employee payroll tax
+  const commissionComp = c2r.currentTakeHome;
+  const commissionPayrollTax = commissionComp * PAYROLL_TAX_RATE;
+  const commissionCaTax = calculateCAIncomeTax(commissionComp);
+  const commissionAfterTax = commissionComp - commissionPayrollTax - commissionCaTax;
+
+  const gapAfterTax = renterAfterTax - commissionAfterTax;
+  const gapMonthly = gapAfterTax / 12;
+
+  // How the after-tax gap moves as clients stay with the salon (0–50% loss).
+  // Each level rescales renter pre-tax income, then reapplies both taxes.
+  const retentionTable = c2r.scenarios.map(({ retention, takeHome }) => {
+    const seTax = calculateSelfEmploymentTax(takeHome).seTax;
+    const caTax = calculateCAIncomeTax(takeHome);
+    const afterTax = takeHome - seTax - caTax;
+    return {
+      clientsLost: retention,
+      renterAfterTax: afterTax,
+      commissionAdvantage: commissionAfterTax - afterTax,
+    };
+  });
+
+  // What the renter pays out of pocket that the salon covers on commission
+  // (the totalCOGS components, as the "package value" list)
+  const salonValue = {
+    items: [
+      { label: 'Booth Rent', amount: c2r.yearlyRent },
+      { label: 'Color & Supplies', amount: c2r.colorSupplies },
+      { label: 'Credit Card Processing', amount: c2r.ccFees },
+      { label: 'Marketing', amount: c2r.marketing },
+      { label: 'Assistant Support', amount: c2r.asstYearly },
+    ],
+    total: c2r.totalCOGS,
+  };
+
+  return {
+    renterPreTax,
+    renterSeTax,
+    renterCaTax,
+    renterAfterTax,
+    commissionComp,
+    commissionPayrollTax,
+    commissionCaTax,
+    commissionAfterTax,
+    gapAfterTax,
+    gapMonthly,
+    retentionTable,
+    salonValue,
+  };
+}
+
 // ── Tiered Commission (weekly marginal brackets) ────────────────────
 
 const DEFAULT_COMMISSION_TIERS = [
@@ -328,6 +399,7 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateSelfEmploymentTax,
     calculateCAIncomeTax,
     calculateCommissionToRenter,
+    calculateAfterTaxReality,
     calculateRenterToCommission,
     calculateTieredCommission,
     calculateFlatCommission,
