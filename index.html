@@ -35,6 +35,13 @@
       button { display: none !important; }
       .print\:hidden { display: none !important; }
       input { border: none !important; background: transparent !important; padding: 0 !important; }
+      /* One-pager print mode: sheet is portaled to <body>; hide the app */
+      body.onepager-open #root { display: none !important; }
+      body.onepager-open .onepager-overlay { position: static !important; overflow: visible !important; }
+      body.onepager-open .onepager-wrap { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+      body.onepager-open .onepager-sheet {
+        border: none !important; box-shadow: none !important; border-radius: 0 !important;
+      }
     }
   </style>
 </head>
@@ -66,25 +73,46 @@
         frontDeskDescription: "Booking, check-in, phone, retail",
         newClientsPerMonth: 100,
       },
-      defaultTipPercent: 18,
+      defaultTipPercent: 15,
       defaultTab: "renter-to-commission",
     };
 
     // Core math & formatting loaded from calculator.js
     // (formatCurrency, formatPercent, calculateCommissionToRenter, calculateRenterToCommission)
 
-    // Persist state in localStorage so values survive refresh / tab close
-    const usePersistedState = (key, defaultValue) => {
+    // Persist state in localStorage so values survive refresh / tab close.
+    // Saved objects are shallow-merged over the defaults (after an optional
+    // `migrate` pass) so fields added in later versions fall back cleanly
+    // instead of being undefined for existing users.
+    const usePersistedState = (key, defaultValue, migrate) => {
       const [state, setState] = useState(() => {
         try {
           const saved = localStorage.getItem(key);
-          return saved ? JSON.parse(saved) : defaultValue;
+          if (!saved) return defaultValue;
+          const parsed = migrate ? migrate(JSON.parse(saved)) : JSON.parse(saved);
+          const isPlainObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+          return isPlainObj(parsed) && isPlainObj(defaultValue)
+            ? { ...defaultValue, ...parsed }
+            : parsed;
         } catch { return defaultValue; }
       });
       useEffect(() => {
         localStorage.setItem(key, JSON.stringify(state));
       }, [key, state]);
       return [state, setState];
+    };
+
+    // Backfill tip fields for input states saved before the $ / % toggle existed.
+    // Stays in percent mode; % is seeded from the saved dollar tips so the
+    // percent view matches what the user was already getting, and the raw
+    // dollar `tips` value stays intact for when they switch to $ mode.
+    const migrateTipInputs = (inputs) => {
+      if (inputs.tipMode === undefined) inputs.tipMode = 'percent';
+      if (inputs.tipPercent === undefined && inputs.tipMode === 'percent'
+          && inputs.serviceIncome > 0) {
+        inputs.tipPercent = Math.round(((inputs.tips || 0) / inputs.serviceIncome) * 10000) / 100;
+      }
+      return inputs;
     };
 
     // Persist salon config with Infinity handling and defaults merging
@@ -174,11 +202,168 @@
       </div>
     );
 
+    // $ / % toggle for the Yearly Tips input
+    const TipModeToggle = ({ mode, setMode }) => (
+      <div className="flex rounded-md overflow-hidden border border-stone-300 text-[11px]">
+        <button type="button" onClick={() => setMode('dollars')} className={`px-2 py-0.5 font-medium transition-colors ${mode === 'dollars' ? 'bg-amber-500 text-white' : 'bg-stone-50 text-stone-500 hover:bg-stone-100'}`}>$</button>
+        <button type="button" onClick={() => setMode('percent')} className={`px-2 py-0.5 font-medium transition-colors ${mode === 'percent' ? 'bg-amber-500 text-white' : 'bg-stone-50 text-stone-500 hover:bg-stone-100'}`}>%</button>
+      </div>
+    );
+
+    // Yearly Tips input with a $ / % mode toggle. `tips` always holds yearly
+    // dollars (calculator.js math is dollar-based); in % mode it is derived as
+    // serviceIncome * tipPercent / 100. Freeform numeric input in both modes.
+    const TipField = ({ tipMode, tipPercent, tips, serviceIncome, onChange, onModeChange }) => {
+      const isPercent = tipMode === 'percent';
+      const impliedPct = serviceIncome > 0 ? (tips / serviceIncome) * 100 : 0;
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between">
+            <label className={labelClass}>Yearly Tips</label>
+            <TipModeToggle mode={tipMode} setMode={onModeChange} />
+          </div>
+          {isPercent ? (
+            <div className="relative">
+              <input type="number" step="0.1" className={inputClass + " pr-8"} value={tipPercent} onChange={(e) => onChange('tipPercent', e.target.value)} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-stone-400 pointer-events-none">%</span>
+            </div>
+          ) : (
+            <CurrencyInput value={tips} onChange={(e) => onChange('tips', e.target.value)} />
+          )}
+          <span className={helpClass}>
+            {isPercent
+              ? `${tipPercent}% of service income = ${formatCurrency(serviceIncome * tipPercent / 100)}/yr`
+              : `≈ ${impliedPct.toFixed(0)}% of service income`}
+          </span>
+        </div>
+      );
+    };
+
+    // Headline for the After-Tax Reality panel / one-pager.
+    // Phrasing adapts to who actually wins after taxes; all amounts come
+    // from the user's inputs (threshold for the "small gap" framing: $5k/yr).
+    const afterTaxHeadline = (reality) => {
+      const gap = reality.gapAfterTax;
+      if (gap > 0 && gap < 5000) {
+        return `After federal + est. CA taxes, going independent is worth ≈ ${formatCurrency(reality.gapMonthly)}/month more (${formatCurrency(gap)}/yr)`;
+      }
+      if (gap > 0) {
+        return `After federal + est. CA taxes, going independent looks worth ≈ ${formatCurrency(reality.gapMonthly)}/month more (${formatCurrency(gap)}/yr) — but lost clients flip that fast`;
+      }
+      if (gap < 0) {
+        return `After federal + est. CA taxes, staying on commission is worth ≈ ${formatCurrency(-reality.gapMonthly)}/month more (${formatCurrency(-gap)}/yr)`;
+      }
+      return 'After federal + est. CA taxes, the two paths come out even';
+    };
+
+    const afterTaxTooltip =
+      'The pre-tax numbers ignore taxes. Renter income also owes 15.3% self-employment tax ' +
+      '(the Social Security portion is capped; Medicare is not) plus est. CA income tax. ' +
+      'Commission income owes the 8.85% employee payroll share (FICA + SDI) plus the same ' +
+      'est. CA income tax. Since CA tax applies to both sides, the real gap is what remains after tax.';
+
+    // Static risk footnotes for the After-Tax Reality panel / one-pager (no dollar figures)
+    const AFTER_TAX_RISKS = [
+      'No California SDI or Paid Family Leave — an injury or a new baby means zero income',
+      'No show-up pay — a slow week earns nothing',
+      'Quarterly estimated tax filings; missed deadlines carry penalties',
+      'Roughly 10 hours a week of booking, ordering, laundry, and admin',
+      'You absorb every cost swing — supplies, card fees, rent at renewal',
+    ];
+
+    // Print-optimized one-pager. Rendered as a full-screen preview; when the
+    // user prints, body.onepager-open restricts output to the .onepager-sheet.
+    const AfterTaxOnePager = ({ reality, config, onClose }) => {
+      useEffect(() => {
+        document.body.classList.add('onepager-open');
+        return () => document.body.classList.remove('onepager-open');
+      }, []);
+
+      const firstWinIndex = reality.retentionTable.findIndex(r => r.commissionAdvantage > 0);
+      const coveredItems = reality.salonValue.items.filter(i => i.amount > 0);
+
+      // Portaled to <body> so print CSS can hide #root wholesale
+      return ReactDOM.createPortal(
+        <div className="fixed inset-0 z-50 bg-white overflow-y-auto onepager-overlay">
+          <div className="max-w-3xl mx-auto px-6 py-8 onepager-wrap">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-6 print:hidden">
+              <p className="text-xs text-stone-400">Print preview — this is what will print</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => window.print()} className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">Print</button>
+                <button type="button" onClick={onClose} className="px-4 py-2 border border-stone-300 rounded-lg text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors">Close</button>
+              </div>
+            </div>
+
+            <div className="onepager-sheet text-stone-900 border border-stone-200 rounded-xl shadow-sm p-6 md:p-10">
+              <p className="text-xs uppercase tracking-wider text-stone-500">{config.salonName}</p>
+              <h1 className="text-2xl md:text-3xl font-bold mt-1 tracking-tight">The After-Tax Reality: Commission vs. Renting</h1>
+
+              <p className="mt-5 text-base font-medium leading-relaxed">{afterTaxHeadline(reality)}</p>
+
+              <h2 className="mt-8 text-xs font-bold uppercase tracking-wider border-b-2 border-stone-900 pb-1">If clients stay with the salon</h2>
+              <table className="w-full mt-3 text-sm">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-stone-500">
+                    <th className="py-2 text-left font-semibold">Clients lost</th>
+                    <th className="py-2 text-right font-semibold">Renter after-tax</th>
+                    <th className="py-2 text-right font-semibold">Commission advantage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reality.retentionTable.map((row, i) => (
+                    <tr key={row.clientsLost} className={`border-t border-stone-200 ${i === firstWinIndex ? 'bg-emerald-50 font-semibold' : ''}`}>
+                      <td className="py-2">{row.clientsLost}%</td>
+                      <td className="py-2 text-right">{formatCurrency(row.renterAfterTax)}</td>
+                      <td className={`py-2 text-right ${row.commissionAdvantage > 0 ? 'text-emerald-700' : 'text-stone-500'}`}>
+                        {row.commissionAdvantage > 0 ? '+' : ''}{formatCurrency(row.commissionAdvantage)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <h2 className="mt-8 text-xs font-bold uppercase tracking-wider border-b-2 border-stone-900 pb-1">What the salon covers</h2>
+              {coveredItems.length > 0 ? (
+                <React.Fragment>
+                  <ul className="mt-3 text-sm">
+                    {coveredItems.map(item => (
+                      <li key={item.label} className="flex justify-between items-baseline py-1.5 border-b border-stone-100">
+                        <span>&#10003; {item.label}</span>
+                        <span className="font-semibold">{formatCurrency(item.amount)}/yr</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex justify-between items-baseline py-2.5 mt-1 text-sm">
+                    <span className="font-bold">Total package value</span>
+                    <span className="text-lg font-bold">{formatCurrency(reality.salonValue.total)}/yr</span>
+                  </div>
+                </React.Fragment>
+              ) : (
+                <p className="mt-3 text-sm text-stone-500">On commission, the salon covers rent, supplies, and overhead.</p>
+              )}
+
+              <h2 className="mt-8 text-xs font-bold uppercase tracking-wider border-b-2 border-stone-900 pb-1">Also worth weighing</h2>
+              <ul className="mt-3 text-sm text-stone-600 list-disc list-inside space-y-1.5">
+                {AFTER_TAX_RISKS.map((risk, i) => <li key={i}>{risk}</li>)}
+              </ul>
+
+              <p className="mt-10 pt-3 border-t border-stone-300 text-xs text-stone-500">
+                Estimates use 2025 IRS and CA FTB figures, single filer. Ask for a personalized comparison before deciding.
+              </p>
+            </div>
+          </div>
+        </div>,
+        document.body
+      );
+    };
+
     // Commission to Renter Calculator
     const CommissionToRenter = ({ config }) => {
       const [inputs, setInputs] = usePersistedState('c2r-inputs', {
         serviceIncome: 100000,
-        tips: 18000,
+        tipMode: 'percent',
+        tipPercent: config.defaultTipPercent,
+        tips: 100000 * config.defaultTipPercent / 100,
         startingRate: 40,
         weeklyRent: 525,
         colorSupplies: 10125,
@@ -188,18 +373,55 @@
         assistantDays: 0,
         asstTaxPct: 0,
         ccFeePct: 2.9,
-      });
+      }, migrateTipInputs);
 
       const [showAssistant, setShowAssistant] = useState(inputs.assistantHourly > 0);
       const [expenseMode, setExpenseMode] = useState('yearly');
       const [clientRetention, setClientRetention] = useState(80);
       const [showScenarios, setShowScenarios] = useState(false);
+      const [showReality, setShowReality] = useState(false);
+      const [showOnePager, setShowOnePager] = useState(false);
 
       const handleChange = (field, value) => {
-        setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
+        setInputs(prev => {
+          const next = { ...prev, [field]: parseFloat(value) || 0 };
+          // In % mode, yearly dollar tips track service income
+          if (field === 'serviceIncome' && next.tipMode === 'percent') {
+            next.tips = next.serviceIncome * next.tipPercent / 100;
+          }
+          return next;
+        });
+      };
+
+      const handleTipChange = (field, value) => {
+        setInputs(prev => {
+          const num = parseFloat(value) || 0;
+          return field === 'tipPercent'
+            ? { ...prev, tipPercent: num, tips: prev.serviceIncome * num / 100 }
+            : { ...prev, [field]: num };
+        });
+      };
+
+      const handleTipModeChange = (mode) => {
+        setInputs(prev => {
+          if (mode === prev.tipMode) return prev;
+          if (mode === 'dollars') return { ...prev, tipMode: 'dollars' };
+          // Switching to %: carry the implied percentage so the dollar value doesn't jump
+          const implied = prev.serviceIncome > 0
+            ? Math.round((prev.tips / prev.serviceIncome) * 10000) / 100
+            : prev.tipPercent;
+          return { ...prev, tipMode: 'percent', tipPercent: implied };
+        });
       };
 
       const calculations = useMemo(() => calculateCommissionToRenter({
+        ...inputs,
+        commissionType: config.commissionType,
+        commissionTiers: config.commissionTiers,
+        salonInvestments: config.salonInvestments,
+      }), [inputs, config]);
+
+      const reality = useMemo(() => calculateAfterTaxReality({
         ...inputs,
         commissionType: config.commissionType,
         commissionTiers: config.commissionTiers,
@@ -210,8 +432,13 @@
       const renterPreTax = retainedIncome - calculations.totalCOGS;
       const renterSeTax = calculateSelfEmploymentTax(renterPreTax);
       const renterTakeHome = renterPreTax - renterSeTax.seTax;
+      // CA income tax is informational: it applies to both sides, so it is
+      // deliberately excluded from the crossover/verdict math.
+      const commissionCATax = calculateCAIncomeTax(calculations.currentTakeHome);
+      const renterCATax = calculateCAIncomeTax(renterPreTax);
 
       return (
+        <React.Fragment>
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
           {/* Explainer Callout */}
           <div className="bg-stone-100 border border-stone-200 rounded-xl p-4 mb-8">
@@ -227,11 +454,14 @@
                 <CurrencyInput value={inputs.serviceIncome} onChange={(e) => handleChange('serviceIncome', e.target.value)} />
                 <span className={helpClass}>Total services billed</span>
               </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Yearly Tips</label>
-                <CurrencyInput value={inputs.tips} onChange={(e) => handleChange('tips', e.target.value)} />
-
-              </div>
+              <TipField
+                tipMode={inputs.tipMode}
+                tipPercent={inputs.tipPercent}
+                tips={inputs.tips}
+                serviceIncome={inputs.serviceIncome}
+                onChange={handleTipChange}
+                onModeChange={handleTipModeChange}
+              />
             </div>
           </div>
 
@@ -403,7 +633,7 @@
               <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-4 text-center">
                 <p className="text-xs text-emerald-600 font-medium mb-1">Commission Take-Home (after taxes)</p>
                 <p className="text-2xl font-bold text-emerald-700">{formatCurrency(calculations.adjustedCurrentTakeHome)}</p>
-                <p className="text-xs text-stone-400 mt-1">after FICA</p>
+                <p className="text-xs text-stone-400 mt-1">after payroll tax</p>
               </div>
               <div className="bg-amber-50 border border-amber-200/60 rounded-lg p-4 text-center">
                 <p className="text-xs text-amber-600 font-medium mb-1">Estimated Renter Take-Home (after taxes)</p>
@@ -430,7 +660,7 @@
                   <p className="text-xs text-stone-500 mt-3 leading-relaxed">
                     {diff >= 0
                       ? 'Keep in mind that renting means taking on hidden costs — managing your own bookings, sourcing supplies, doing your own laundry, and filing 1099 taxes. That\'s roughly 10 hours a week spent running a business instead of doing hair.'
-                      : 'On commission, the salon handles booking, supplies, marketing, and laundry — plus you pay lower payroll taxes (7.65% vs 15.3%).'}
+                      : 'On commission, the salon handles booking, supplies, marketing, and laundry — plus you pay lower payroll taxes (8.85% vs 15.3%).'}
                   </p>
                 </div>
               );
@@ -443,11 +673,18 @@
               <span className="text-sm text-stone-400">{formatCurrency(calculations.currentTakeHome)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-1.5 pl-4 border-b border-stone-100">
-              <span className="text-xs text-stone-400">FICA (7.65%)</span>
-              <span className="text-sm text-red-600">−{formatCurrency(calculations.commissionFica)}</span>
+              <span className="text-xs text-stone-400" title="Employee FICA 7.65% + CA SDI 1.2%">Payroll Tax (8.85%)</span>
+              <span className="text-sm text-red-600">−{formatCurrency(calculations.payrollTax)}</span>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-1.5 pl-4 border-b border-stone-100">
+              <span className="text-xs text-stone-400" title="2025 FTB estimate — applies to both sides, not included in breakeven math">Est. CA income tax <span className="text-stone-300">(est.)</span></span>
+              <span className="text-sm text-red-600">−{formatCurrency(commissionCATax)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200 mb-4">
-              <span className="text-sm font-medium text-stone-700">After-Tax Commission Take-Home</span>
+              <div>
+                <span className="text-sm font-medium text-stone-700">After-Tax Commission Take-Home</span>
+                <p className="text-xs text-stone-400">federal only · ≈ {formatCurrency(calculations.adjustedCurrentTakeHome - commissionCATax)} after est. CA income tax</p>
+              </div>
               <span className="text-lg font-bold text-stone-700">{formatCurrency(calculations.adjustedCurrentTakeHome)}</span>
             </div>
 
@@ -465,8 +702,15 @@
               <span className="text-xs text-stone-400">Self-Employment Tax (15.3%)</span>
               <span className="text-sm text-red-600">−{formatCurrency(renterSeTax.seTax)}</span>
             </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-1.5 pl-4 border-b border-stone-100">
+              <span className="text-xs text-stone-400" title="2025 FTB estimate — applies to both sides, not included in breakeven math">Est. CA income tax <span className="text-stone-300">(est.)</span></span>
+              <span className="text-sm text-red-600">−{formatCurrency(renterCATax)}</span>
+            </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">
-              <span className="text-sm font-medium text-stone-700">After-Tax Renter Take-Home</span>
+              <div>
+                <span className="text-sm font-medium text-stone-700">After-Tax Renter Take-Home</span>
+                <p className="text-xs text-stone-400">federal only · ≈ {formatCurrency(renterTakeHome - renterCATax)} after est. CA income tax</p>
+              </div>
               <span className="text-lg font-bold text-stone-700">{formatCurrency(renterTakeHome)}</span>
             </div>
 
@@ -510,8 +754,87 @@
               )}
             </div>
 
+            {/* The After-Tax Reality */}
+            <div className="mt-6">
+              <button type="button" onClick={() => setShowReality(prev => !prev)} className="flex items-center gap-2 text-sm text-stone-500 hover:text-stone-700 transition-colors mb-3">
+                <span className={`inline-block transition-transform ${showReality ? 'rotate-90' : ''}`}>&#9654;</span>
+                The After-Tax Reality
+              </button>
+              {showReality && (
+              <div className="pt-4 border-t-2 border-stone-100">
+                <p className="text-sm font-medium text-stone-700 leading-relaxed">{afterTaxHeadline(reality)}</p>
+                <p className="mt-2 text-xs text-stone-400">
+                  <span className="cursor-help border-b border-dotted border-stone-400" title={afterTaxTooltip}>
+                    Why is this different from the pre-tax numbers?
+                  </span>
+                </p>
+
+                {/* Retention table */}
+                <div className="mt-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">If Clients Stay with the Salon</h4>
+                  <div className="flex items-baseline gap-x-2 py-2 border-b border-stone-200 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                    <span className="flex-1">Clients lost</span>
+                    <span className="w-28 text-right">Renter after-tax</span>
+                    <span className="w-32 text-right">Commission advantage</span>
+                  </div>
+                  {reality.retentionTable.map((row, i) => {
+                    const firstWin = i === reality.retentionTable.findIndex(r => r.commissionAdvantage > 0);
+                    return (
+                      <div key={row.clientsLost} className={`flex items-baseline gap-x-2 py-2 border-b border-stone-100 text-sm ${firstWin ? 'bg-emerald-50 -mx-2 px-2 rounded' : ''}`}>
+                        <span className={`flex-1 ${firstWin ? 'font-medium text-emerald-800' : 'text-stone-600'}`}>{row.clientsLost}%</span>
+                        <span className="w-28 text-right text-stone-700">{formatCurrency(row.renterAfterTax)}</span>
+                        <span className={`w-32 text-right font-medium ${row.commissionAdvantage > 0 ? 'text-emerald-700' : 'text-stone-400'}`}>
+                          {row.commissionAdvantage > 0 ? '+' : ''}{formatCurrency(row.commissionAdvantage)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* What the salon covers */}
+                <div className="mt-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">What the Salon Covers</h4>
+                  {reality.salonValue.items.filter(i => i.amount > 0).map(item => (
+                    <div key={item.label} className="flex items-baseline justify-between gap-x-4 py-1.5 border-b border-stone-100">
+                      <span className="text-xs text-stone-500">&#10003; {item.label}</span>
+                      <span className="text-xs font-semibold text-stone-600">{formatCurrency(item.amount)}/yr</span>
+                    </div>
+                  ))}
+                  <div className="flex items-baseline justify-between gap-x-4 py-2 border-b border-stone-200">
+                    <span className="text-xs font-semibold text-stone-600">Total package value</span>
+                    <span className="text-sm font-bold text-stone-700">{formatCurrency(reality.salonValue.total)}/yr</span>
+                  </div>
+                </div>
+
+                {/* Risk footnotes (static, no figures) */}
+                <div className="mt-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-2">Also Worth Weighing</h4>
+                  <ul className="list-disc list-inside text-xs text-stone-400 space-y-1">
+                    {AFTER_TAX_RISKS.map((risk, i) => <li key={i}>{risk}</li>)}
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowOnePager(true)}
+                  className="mt-6 w-full py-2.5 px-4 border border-stone-300 rounded-lg text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors"
+                >
+                  Print one-pager
+                </button>
+              </div>
+              )}
+            </div>
+
           </div>
         </div>
+        {showOnePager && (
+          <AfterTaxOnePager
+            reality={reality}
+            config={config}
+            onClose={() => setShowOnePager(false)}
+          />
+        )}
+        </React.Fragment>
       );
     };
 
@@ -519,7 +842,9 @@
     const RenterToCommission = ({ config }) => {
       const [inputs, setInputs] = usePersistedState('r2c-inputs', {
         serviceIncome: 100000,
-        tips: 18000,
+        tipMode: 'percent',
+        tipPercent: config.defaultTipPercent,
+        tips: 100000 * config.defaultTipPercent / 100,
         startingRate: 40,
         weeklyRent: 525,
         colorSupplies: 10125,
@@ -527,11 +852,39 @@
         laundry: 0,
         ccFeePct: 2.9,
         otherExpenses: 1500,
-      });
+      }, migrateTipInputs);
       const [expenseMode, setExpenseMode] = useState('yearly');
 
       const handleChange = (field, value) => {
-        setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
+        setInputs(prev => {
+          const next = { ...prev, [field]: parseFloat(value) || 0 };
+          // In % mode, yearly dollar tips track service income
+          if (field === 'serviceIncome' && next.tipMode === 'percent') {
+            next.tips = next.serviceIncome * next.tipPercent / 100;
+          }
+          return next;
+        });
+      };
+
+      const handleTipChange = (field, value) => {
+        setInputs(prev => {
+          const num = parseFloat(value) || 0;
+          return field === 'tipPercent'
+            ? { ...prev, tipPercent: num, tips: prev.serviceIncome * num / 100 }
+            : { ...prev, [field]: num };
+        });
+      };
+
+      const handleTipModeChange = (mode) => {
+        setInputs(prev => {
+          if (mode === prev.tipMode) return prev;
+          if (mode === 'dollars') return { ...prev, tipMode: 'dollars' };
+          // Switching to %: carry the implied percentage so the dollar value doesn't jump
+          const implied = prev.serviceIncome > 0
+            ? Math.round((prev.tips / prev.serviceIncome) * 10000) / 100
+            : prev.tipPercent;
+          return { ...prev, tipMode: 'percent', tipPercent: implied };
+        });
       };
 
       const calculations = useMemo(() => calculateRenterToCommission({
@@ -540,6 +893,11 @@
         commissionTiers: config.commissionTiers,
         salonInvestments: config.salonInvestments,
       }), [inputs, config]);
+
+      // CA income tax is informational: it applies to both sides, so it is
+      // deliberately excluded from the verdict math.
+      const commissionCATax = calculateCAIncomeTax(calculations.commissionIncome);
+      const renterCATax = calculateCAIncomeTax(calculations.currentTakeHome);
 
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
@@ -558,10 +916,14 @@
                 <CurrencyInput value={inputs.serviceIncome} onChange={(e) => handleChange('serviceIncome', e.target.value)} />
                 <span className={helpClass}>Total services billed</span>
               </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Yearly Tips</label>
-                <CurrencyInput value={inputs.tips} onChange={(e) => handleChange('tips', e.target.value)} />
-              </div>
+              <TipField
+                tipMode={inputs.tipMode}
+                tipPercent={inputs.tipPercent}
+                tips={inputs.tips}
+                serviceIncome={inputs.serviceIncome}
+                onChange={handleTipChange}
+                onModeChange={handleTipModeChange}
+              />
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
               <span className="text-sm text-stone-500 font-bold">Total Gross Income</span>
@@ -599,12 +961,19 @@
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
               <div>
                 <span className="text-sm text-red-500">Self-Employment Tax (15.3%)</span>
-                <p className="text-xs text-stone-400">Federal — renters pay both employer + employee FICA</p>
+                <p className="text-xs text-stone-400">Federal — 12.4% Social Security (capped at $176,100 for 2025) + 2.9% Medicare on all earnings</p>
               </div>
               <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.selfEmploymentTax)}</span>
             </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-red-500" title="2025 FTB estimate — applies to both sides, not included in verdict math">Est. CA income tax <span className="text-stone-400">(est.)</span></span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(renterCATax)}</span>
+            </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">
-              <span className="text-sm font-medium text-stone-700">Estimated Renter Take-Home</span>
+              <div>
+                <span className="text-sm font-medium text-stone-700">Estimated Renter Take-Home</span>
+                <p className="text-xs text-stone-400">federal only · ≈ {formatCurrency(calculations.adjustedRenterTakeHome - renterCATax)} after est. CA income tax</p>
+              </div>
               <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedRenterTakeHome)}</span>
             </div>
           </div>
@@ -677,7 +1046,7 @@
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.weeklyCommission)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
-              <span className="text-sm text-stone-500">Tips @ {config.defaultTipPercent}%</span>
+              <span className="text-sm text-stone-500">{inputs.tipMode === 'percent' ? `Tips @ ${inputs.tipPercent}%` : 'Tips'}</span>
               <span className="text-sm font-semibold text-stone-700">+{formatCurrency(inputs.tips)}/yr</span>
             </div>
 
@@ -687,13 +1056,20 @@
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
               <div>
-                <span className="text-sm text-red-500">Commission FICA (7.65%)</span>
-                <p className="text-xs text-stone-400">Federal — employee share only, salon pays the other half</p>
+                <span className="text-sm text-red-500">Payroll Tax (8.85%)</span>
+                <p className="text-xs text-stone-400">FICA 7.65% + CA SDI 1.2% — employee share; salon pays employer FICA</p>
               </div>
-              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.commissionFica)}</span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.payrollTax)}</span>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-red-500" title="2025 FTB estimate — applies to both sides, not included in verdict math">Est. CA income tax <span className="text-stone-400">(est.)</span></span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(commissionCATax)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">
-              <span className="text-sm font-medium text-stone-700">Estimated Commission Take-Home</span>
+              <div>
+                <span className="text-sm font-medium text-stone-700">Estimated Commission Take-Home</span>
+                <p className="text-xs text-stone-400">federal only · ≈ {formatCurrency(calculations.adjustedCommissionIncome - commissionCATax)} after est. CA income tax</p>
+              </div>
               <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedCommissionIncome)}</span>
             </div>
           </div>
@@ -765,7 +1141,7 @@
               <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-4 text-center">
                 <p className="text-xs text-emerald-600 font-medium mb-1">On Commission</p>
                 <p className="text-2xl font-bold text-emerald-700">{formatCurrency(calculations.adjustedCommissionIncome)}</p>
-                <p className="text-xs text-stone-400 mt-1">after FICA</p>
+                <p className="text-xs text-stone-400 mt-1">after payroll tax</p>
               </div>
             </div>
 
