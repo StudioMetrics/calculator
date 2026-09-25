@@ -8,7 +8,10 @@ const {
   calculateTieredCommission,
   calculateFlatCommission,
   calculateSelfEmploymentTax,
-  DEFAULT_COMMISSION_TIERS
+  calculateCAIncomeTax,
+  DEFAULT_COMMISSION_TIERS,
+  PAYROLL_TAX_RATE,
+  SS_WAGE_BASE_2025
 } = require('./calculator');
 
 // ── Default test inputs (Studio Los Gatos sample data) ──────────────
@@ -161,12 +164,13 @@ describe('calculateCommissionToRenter', () => {
     expect(result.crossoverRetention).toBeCloseTo(expected, 2);
   });
 
-  it('calculates commissionFica at 7.65% of currentTakeHome', () => {
-    expect(result.commissionFica).toBeCloseTo(result.currentTakeHome * 0.0765, 2);
+  it('applies 8.85% payroll tax (FICA + CA SDI) to currentTakeHome', () => {
+    expect(result.payrollTax).toBeCloseTo(result.currentTakeHome * 0.0885, 2);
+    expect(PAYROLL_TAX_RATE).toBe(0.0885);
   });
 
-  it('calculates adjustedCurrentTakeHome as currentTakeHome minus FICA', () => {
-    expect(result.adjustedCurrentTakeHome).toBeCloseTo(result.currentTakeHome - result.commissionFica, 2);
+  it('calculates adjustedCurrentTakeHome as currentTakeHome minus payroll tax', () => {
+    expect(result.adjustedCurrentTakeHome).toBeCloseTo(result.currentTakeHome - result.payrollTax, 2);
   });
 
   it('calculates renterSelfEmploymentTax via calculateSelfEmploymentTax', () => {
@@ -275,21 +279,113 @@ describe('calculateTieredCommission', () => {
 describe('calculateSelfEmploymentTax', () => {
   it('calculates SE tax on positive earnings', () => {
     const result = calculateSelfEmploymentTax(100000);
-    // 100000 * 0.9235 * 0.153 = 14,129.55
+    // 100000 * 0.9235 * 0.153 = 14,129.55 (below SS cap, so full 15.3% applies)
     expect(result.seTax).toBeCloseTo(14129.55, 2);
     expect(result.effectiveRate).toBeCloseTo(0.141296, 4);
+  });
+
+  it('exposes ssPortion and medicarePortion that sum to seTax', () => {
+    const result = calculateSelfEmploymentTax(100000);
+    // 100000 * 0.9235 = 92,350 taxable base
+    expect(result.ssPortion).toBeCloseTo(92350 * 0.124, 2);
+    expect(result.medicarePortion).toBeCloseTo(92350 * 0.029, 2);
+    expect(result.ssPortion + result.medicarePortion).toBeCloseTo(result.seTax, 2);
+  });
+
+  it('caps the SS portion at the 2025 wage base while Medicare stays uncapped', () => {
+    // 250000 * 0.9235 = 230,875 > 176,100 → SS base is capped
+    const result = calculateSelfEmploymentTax(250000);
+    expect(result.ssPortion).toBeCloseTo(SS_WAGE_BASE_2025 * 0.124, 2); // 21,836.40
+    expect(result.medicarePortion).toBeCloseTo(250000 * 0.9235 * 0.029, 2);
+    expect(result.seTax).toBeCloseTo(21836.40 + 6695.38, 1);
+  });
+
+  it('grows only at the flat 2.9% Medicare rate above the cap', () => {
+    const lower = calculateSelfEmploymentTax(250000).seTax;
+    const higher = calculateSelfEmploymentTax(260000).seTax;
+    expect(higher - lower).toBeCloseTo(10000 * 0.9235 * 0.029, 2); // 267.82, not 10k * 0.1413
+  });
+
+  it('has a falling effective rate above the cap', () => {
+    const atCapEarnings = SS_WAGE_BASE_2025 / 0.9235; // earnings where SS base exactly hits cap
+    const peak = calculateSelfEmploymentTax(atCapEarnings).effectiveRate;
+    const above = calculateSelfEmploymentTax(300000).effectiveRate;
+    const further = calculateSelfEmploymentTax(500000).effectiveRate;
+    expect(peak).toBeCloseTo(0.9235 * 0.153, 4); // max effective rate at the cap
+    expect(above).toBeLessThan(peak);
+    expect(further).toBeLessThan(above);
   });
 
   it('returns zero for zero earnings', () => {
     const result = calculateSelfEmploymentTax(0);
     expect(result.seTax).toBe(0);
     expect(result.effectiveRate).toBe(0);
+    expect(result.ssPortion).toBe(0);
+    expect(result.medicarePortion).toBe(0);
   });
 
   it('returns zero for negative earnings', () => {
     const result = calculateSelfEmploymentTax(-5000);
     expect(result.seTax).toBe(0);
     expect(result.effectiveRate).toBe(0);
+    expect(result.ssPortion).toBe(0);
+    expect(result.medicarePortion).toBe(0);
+  });
+});
+
+// ── CA Income Tax ───────────────────────────────────────────────────
+
+describe('calculateCAIncomeTax', () => {
+  it('returns zero for zero and negative income', () => {
+    expect(calculateCAIncomeTax(0)).toBe(0);
+    expect(calculateCAIncomeTax(-1000)).toBe(0);
+  });
+
+  it('taxes the first bracket at 1% up to $11,079', () => {
+    expect(calculateCAIncomeTax(11079)).toBeCloseTo(110.79, 2);
+    expect(calculateCAIncomeTax(10000)).toBeCloseTo(100, 2);
+  });
+
+  it('computes exact marginal tax at each 2025 single bracket boundary', () => {
+    const boundaries = [
+      [11079, 110.79],
+      [26264, 414.49],
+      [41452, 1022.01],
+      [57542, 1987.41],
+      [72724, 3201.97],
+      [371479, 30986.185],
+      [445771, 38638.261],
+      [742953, 72219.827],
+    ];
+    for (const [income, expected] of boundaries) {
+      expect(calculateCAIncomeTax(income)).toBeCloseTo(expected, 2);
+    }
+  });
+
+  it('steps up to the next marginal rate just past a boundary', () => {
+    // $1 past the 2% bracket is taxed at the 4% rate
+    expect(calculateCAIncomeTax(26265)).toBeCloseTo(414.49 + 0.04, 2);
+    expect(calculateCAIncomeTax(26265) - calculateCAIncomeTax(26264)).toBeCloseTo(0.04, 6);
+  });
+
+  it('applies 12.3% to income in the top bracket', () => {
+    expect(calculateCAIncomeTax(1000000)).toBeCloseTo(103836.608, 2);
+    // $1 past the top boundary: previous exact tax + one dollar at 12.3%
+    expect(calculateCAIncomeTax(742954)).toBeCloseTo(72219.827 + 0.123, 2);
+  });
+
+  it('is monotonically increasing in income', () => {
+    let prev = 0;
+    for (let income = 0; income <= 800000; income += 25000) {
+      const tax = calculateCAIncomeTax(income);
+      expect(tax).toBeGreaterThanOrEqual(prev);
+      prev = tax;
+    }
+  });
+
+  it('defaults to single brackets; filingStatus is accepted but single-only', () => {
+    expect(calculateCAIncomeTax(100000)).toBe(calculateCAIncomeTax(100000, 'single'));
+    expect(calculateCAIncomeTax(100000, 'married')).toBe(calculateCAIncomeTax(100000, 'single'));
   });
 });
 
@@ -362,13 +458,13 @@ describe('calculateRenterToCommission', () => {
     expect(result.selfEmploymentTax).toBeCloseTo(expectedSE, 2);
   });
 
-  it('calculates commission FICA at 7.65%', () => {
-    expect(result.commissionFica).toBeCloseTo(result.commissionIncome * 0.0765, 2);
+  it('applies 8.85% payroll tax (FICA + CA SDI) to commissionIncome', () => {
+    expect(result.payrollTax).toBeCloseTo(result.commissionIncome * 0.0885, 2);
   });
 
-  it('calculates adjusted commission income after FICA', () => {
+  it('calculates adjusted commission income after payroll tax', () => {
     expect(result.adjustedCommissionIncome).toBeCloseTo(
-      result.commissionIncome - result.commissionFica, 2
+      result.commissionIncome - result.payrollTax, 2
     );
   });
 
@@ -384,11 +480,11 @@ describe('calculateRenterToCommission', () => {
     );
   });
 
-  it('calculates SE tax penalty (delta between SE tax and FICA)', () => {
+  it('calculates SE tax penalty (delta between SE tax and payroll tax)', () => {
     expect(result.seTaxPenalty).toBeCloseTo(
-      result.selfEmploymentTax - result.commissionFica, 2
+      result.selfEmploymentTax - result.payrollTax, 2
     );
-    // SE tax is always more than FICA for same income
+    // SE tax is always more than employee-side payroll tax for same income
     expect(result.seTaxPenalty).toBeGreaterThan(0);
   });
 

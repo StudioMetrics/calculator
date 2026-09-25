@@ -23,12 +23,61 @@ function formatPercent(val) {
 
 // ── Self-Employment Tax (1099 renters pay both halves of FICA) ──────
 
+// Social Security wage base (SSA). Only the 12.4% SS portion is capped;
+// the 2.9% Medicare portion applies to all earnings.
+const SS_WAGE_BASE_2025 = 176100;
+const SS_WAGE_BASE_2026 = 184500;
+const SS_WAGE_BASE = SS_WAGE_BASE_2025;
+
+const SE_SS_RATE = 0.124;
+const SE_MEDICARE_RATE = 0.029;
+const SE_TAXABLE_FACTOR = 0.9235; // 7.65% deduction for the "employer half"
+
 function calculateSelfEmploymentTax(netEarnings) {
-  if (netEarnings <= 0) return { seTax: 0, effectiveRate: 0 };
-  const taxableBase = netEarnings * 0.9235;
-  const seTax = taxableBase * 0.153;
-  return { seTax, effectiveRate: seTax / netEarnings };
+  if (netEarnings <= 0) return { seTax: 0, effectiveRate: 0, ssPortion: 0, medicarePortion: 0 };
+  const taxableBase = netEarnings * SE_TAXABLE_FACTOR;
+  const ssPortion = Math.min(taxableBase, SS_WAGE_BASE) * SE_SS_RATE;
+  const medicarePortion = taxableBase * SE_MEDICARE_RATE;
+  const seTax = ssPortion + medicarePortion;
+  return { seTax, effectiveRate: seTax / netEarnings, ssPortion, medicarePortion };
 }
+
+// ── CA Income Tax (2025 FTB Schedule X, single) ─────────────────────
+
+const CA_TAX_BRACKETS_2025_SINGLE = [
+  { upTo: 11079, rate: 0.01 },
+  { upTo: 26264, rate: 0.02 },
+  { upTo: 41452, rate: 0.04 },
+  { upTo: 57542, rate: 0.06 },
+  { upTo: 72724, rate: 0.08 },
+  { upTo: 371479, rate: 0.093 },
+  { upTo: 445771, rate: 0.103 },
+  { upTo: 742953, rate: 0.113 },
+  { upTo: Infinity, rate: 0.123 },
+];
+
+/**
+ * Approximate CA state income tax via marginal brackets (2025 Schedule X, single).
+ * Estimate only — no CA deductions/credits/SDI; applies to both sides of the
+ * comparison, so it is informational and excluded from crossover math.
+ */
+function calculateCAIncomeTax(taxableIncome, filingStatus = 'single') {
+  if (filingStatus !== 'single') filingStatus = 'single'; // only single brackets modeled
+  if (taxableIncome <= 0) return 0;
+  let tax = 0;
+  let prev = 0;
+  for (const bracket of CA_TAX_BRACKETS_2025_SINGLE) {
+    if (taxableIncome <= prev) break;
+    const slice = Math.min(taxableIncome, bracket.upTo) - prev;
+    tax += slice * bracket.rate;
+    prev = bracket.upTo;
+  }
+  return tax;
+}
+
+// Commission-side payroll rate: employee FICA 7.65% + CA SDI 1.2% (no SDI
+// wage cap since 2024). Employer-half FICA is paid by the salon.
+const PAYROLL_TAX_RATE = 0.0885;
 
 // ── Commission → Renter ─────────────────────────────────────────────
 
@@ -69,8 +118,8 @@ function calculateCommissionToRenter(inputs) {
   const currentTakeHome = commissionGross + inputs.tips;
 
   // Tax comparison (same logic as R2C)
-  const commissionFica = currentTakeHome * 0.0765;
-  const adjustedCurrentTakeHome = currentTakeHome - commissionFica;
+  const payrollTax = currentTakeHome * PAYROLL_TAX_RATE;
+  const adjustedCurrentTakeHome = currentTakeHome - payrollTax;
 
   const renterSeTax0 = calculateSelfEmploymentTax(scenarios[0].takeHome);
   const renterSelfEmploymentTax = renterSeTax0.seTax;
@@ -107,7 +156,7 @@ function calculateCommissionToRenter(inputs) {
     totalCOGS,
     scenarios,
     currentTakeHome,
-    commissionFica,
+    payrollTax,
     adjustedCurrentTakeHome,
     renterSelfEmploymentTax,
     adjustedScenarios,
@@ -225,11 +274,12 @@ function calculateRenterToCommission(inputs) {
   const selfEmploymentTax = se.seTax;
   const adjustedRenterTakeHome = currentTakeHome - selfEmploymentTax;
 
-  // Commission-side payroll tax (employer pays half, but employee share is 7.65%)
-  const commissionFica = commissionIncome * 0.0765;
-  const adjustedCommissionIncome = commissionIncome - commissionFica;
+  // Commission-side payroll tax: employee FICA 7.65% + CA SDI 1.2%
+  // (SDI has no wage cap since 2024); employer-half FICA is paid by the salon.
+  const payrollTax = commissionIncome * PAYROLL_TAX_RATE;
+  const adjustedCommissionIncome = commissionIncome - payrollTax;
   const adjustedDifference = adjustedCommissionIncome - adjustedRenterTakeHome;
-  const seTaxPenalty = selfEmploymentTax - commissionFica;
+  const seTaxPenalty = selfEmploymentTax - payrollTax;
 
   // Salon benefits breakdown (costs the salon covers under commission)
   const salonBenefitsBreakdown = [
@@ -257,7 +307,7 @@ function calculateRenterToCommission(inputs) {
     commissionIncome,
     difference,
     selfEmploymentTax,
-    commissionFica,
+    payrollTax,
     adjustedCommissionIncome,
     adjustedRenterTakeHome,
     adjustedDifference,
@@ -276,11 +326,15 @@ if (typeof module !== 'undefined' && module.exports) {
     formatCurrency,
     formatPercent,
     calculateSelfEmploymentTax,
+    calculateCAIncomeTax,
     calculateCommissionToRenter,
     calculateRenterToCommission,
     calculateTieredCommission,
     calculateFlatCommission,
     DEFAULT_COMMISSION_TIERS,
-    COMMISSION_TIERS
+    COMMISSION_TIERS,
+    PAYROLL_TAX_RATE,
+    SS_WAGE_BASE_2025,
+    SS_WAGE_BASE_2026
   };
 }

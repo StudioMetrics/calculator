@@ -66,25 +66,46 @@
         frontDeskDescription: "Booking, check-in, phone, retail",
         newClientsPerMonth: 100,
       },
-      defaultTipPercent: 18,
+      defaultTipPercent: 15,
       defaultTab: "renter-to-commission",
     };
 
     // Core math & formatting loaded from calculator.js
     // (formatCurrency, formatPercent, calculateCommissionToRenter, calculateRenterToCommission)
 
-    // Persist state in localStorage so values survive refresh / tab close
-    const usePersistedState = (key, defaultValue) => {
+    // Persist state in localStorage so values survive refresh / tab close.
+    // Saved objects are shallow-merged over the defaults (after an optional
+    // `migrate` pass) so fields added in later versions fall back cleanly
+    // instead of being undefined for existing users.
+    const usePersistedState = (key, defaultValue, migrate) => {
       const [state, setState] = useState(() => {
         try {
           const saved = localStorage.getItem(key);
-          return saved ? JSON.parse(saved) : defaultValue;
+          if (!saved) return defaultValue;
+          const parsed = migrate ? migrate(JSON.parse(saved)) : JSON.parse(saved);
+          const isPlainObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+          return isPlainObj(parsed) && isPlainObj(defaultValue)
+            ? { ...defaultValue, ...parsed }
+            : parsed;
         } catch { return defaultValue; }
       });
       useEffect(() => {
         localStorage.setItem(key, JSON.stringify(state));
       }, [key, state]);
       return [state, setState];
+    };
+
+    // Backfill tip fields for input states saved before the $ / % toggle existed.
+    // Stays in percent mode; % is seeded from the saved dollar tips so the
+    // percent view matches what the user was already getting, and the raw
+    // dollar `tips` value stays intact for when they switch to $ mode.
+    const migrateTipInputs = (inputs) => {
+      if (inputs.tipMode === undefined) inputs.tipMode = 'percent';
+      if (inputs.tipPercent === undefined && inputs.tipMode === 'percent'
+          && inputs.serviceIncome > 0) {
+        inputs.tipPercent = Math.round(((inputs.tips || 0) / inputs.serviceIncome) * 10000) / 100;
+      }
+      return inputs;
     };
 
     // Persist salon config with Infinity handling and defaults merging
@@ -174,11 +195,50 @@
       </div>
     );
 
+    // $ / % toggle for the Yearly Tips input
+    const TipModeToggle = ({ mode, setMode }) => (
+      <div className="flex rounded-md overflow-hidden border border-stone-300 text-[11px]">
+        <button type="button" onClick={() => setMode('dollars')} className={`px-2 py-0.5 font-medium transition-colors ${mode === 'dollars' ? 'bg-amber-500 text-white' : 'bg-stone-50 text-stone-500 hover:bg-stone-100'}`}>$</button>
+        <button type="button" onClick={() => setMode('percent')} className={`px-2 py-0.5 font-medium transition-colors ${mode === 'percent' ? 'bg-amber-500 text-white' : 'bg-stone-50 text-stone-500 hover:bg-stone-100'}`}>%</button>
+      </div>
+    );
+
+    // Yearly Tips input with a $ / % mode toggle. `tips` always holds yearly
+    // dollars (calculator.js math is dollar-based); in % mode it is derived as
+    // serviceIncome * tipPercent / 100. Freeform numeric input in both modes.
+    const TipField = ({ tipMode, tipPercent, tips, serviceIncome, onChange, onModeChange }) => {
+      const isPercent = tipMode === 'percent';
+      const impliedPct = serviceIncome > 0 ? (tips / serviceIncome) * 100 : 0;
+      return (
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between">
+            <label className={labelClass}>Yearly Tips</label>
+            <TipModeToggle mode={tipMode} setMode={onModeChange} />
+          </div>
+          {isPercent ? (
+            <div className="relative">
+              <input type="number" step="0.1" className={inputClass + " pr-8"} value={tipPercent} onChange={(e) => onChange('tipPercent', e.target.value)} />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-stone-400 pointer-events-none">%</span>
+            </div>
+          ) : (
+            <CurrencyInput value={tips} onChange={(e) => onChange('tips', e.target.value)} />
+          )}
+          <span className={helpClass}>
+            {isPercent
+              ? `${tipPercent}% of service income = ${formatCurrency(serviceIncome * tipPercent / 100)}/yr`
+              : `≈ ${impliedPct.toFixed(0)}% of service income`}
+          </span>
+        </div>
+      );
+    };
+
     // Commission to Renter Calculator
     const CommissionToRenter = ({ config }) => {
       const [inputs, setInputs] = usePersistedState('c2r-inputs', {
         serviceIncome: 100000,
-        tips: 18000,
+        tipMode: 'percent',
+        tipPercent: config.defaultTipPercent,
+        tips: 100000 * config.defaultTipPercent / 100,
         startingRate: 40,
         weeklyRent: 525,
         colorSupplies: 10125,
@@ -188,7 +248,7 @@
         assistantDays: 0,
         asstTaxPct: 0,
         ccFeePct: 2.9,
-      });
+      }, migrateTipInputs);
 
       const [showAssistant, setShowAssistant] = useState(inputs.assistantHourly > 0);
       const [expenseMode, setExpenseMode] = useState('yearly');
@@ -196,7 +256,35 @@
       const [showScenarios, setShowScenarios] = useState(false);
 
       const handleChange = (field, value) => {
-        setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
+        setInputs(prev => {
+          const next = { ...prev, [field]: parseFloat(value) || 0 };
+          // In % mode, yearly dollar tips track service income
+          if (field === 'serviceIncome' && next.tipMode === 'percent') {
+            next.tips = next.serviceIncome * next.tipPercent / 100;
+          }
+          return next;
+        });
+      };
+
+      const handleTipChange = (field, value) => {
+        setInputs(prev => {
+          const num = parseFloat(value) || 0;
+          return field === 'tipPercent'
+            ? { ...prev, tipPercent: num, tips: prev.serviceIncome * num / 100 }
+            : { ...prev, [field]: num };
+        });
+      };
+
+      const handleTipModeChange = (mode) => {
+        setInputs(prev => {
+          if (mode === prev.tipMode) return prev;
+          if (mode === 'dollars') return { ...prev, tipMode: 'dollars' };
+          // Switching to %: carry the implied percentage so the dollar value doesn't jump
+          const implied = prev.serviceIncome > 0
+            ? Math.round((prev.tips / prev.serviceIncome) * 10000) / 100
+            : prev.tipPercent;
+          return { ...prev, tipMode: 'percent', tipPercent: implied };
+        });
       };
 
       const calculations = useMemo(() => calculateCommissionToRenter({
@@ -210,6 +298,10 @@
       const renterPreTax = retainedIncome - calculations.totalCOGS;
       const renterSeTax = calculateSelfEmploymentTax(renterPreTax);
       const renterTakeHome = renterPreTax - renterSeTax.seTax;
+      // CA income tax is informational: it applies to both sides, so it is
+      // deliberately excluded from the crossover/verdict math.
+      const commissionCATax = calculateCAIncomeTax(calculations.currentTakeHome);
+      const renterCATax = calculateCAIncomeTax(renterPreTax);
 
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
@@ -227,11 +319,14 @@
                 <CurrencyInput value={inputs.serviceIncome} onChange={(e) => handleChange('serviceIncome', e.target.value)} />
                 <span className={helpClass}>Total services billed</span>
               </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Yearly Tips</label>
-                <CurrencyInput value={inputs.tips} onChange={(e) => handleChange('tips', e.target.value)} />
-
-              </div>
+              <TipField
+                tipMode={inputs.tipMode}
+                tipPercent={inputs.tipPercent}
+                tips={inputs.tips}
+                serviceIncome={inputs.serviceIncome}
+                onChange={handleTipChange}
+                onModeChange={handleTipModeChange}
+              />
             </div>
           </div>
 
@@ -403,7 +498,7 @@
               <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-4 text-center">
                 <p className="text-xs text-emerald-600 font-medium mb-1">Commission Take-Home (after taxes)</p>
                 <p className="text-2xl font-bold text-emerald-700">{formatCurrency(calculations.adjustedCurrentTakeHome)}</p>
-                <p className="text-xs text-stone-400 mt-1">after FICA</p>
+                <p className="text-xs text-stone-400 mt-1">after payroll tax</p>
               </div>
               <div className="bg-amber-50 border border-amber-200/60 rounded-lg p-4 text-center">
                 <p className="text-xs text-amber-600 font-medium mb-1">Estimated Renter Take-Home (after taxes)</p>
@@ -430,7 +525,7 @@
                   <p className="text-xs text-stone-500 mt-3 leading-relaxed">
                     {diff >= 0
                       ? 'Keep in mind that renting means taking on hidden costs — managing your own bookings, sourcing supplies, doing your own laundry, and filing 1099 taxes. That\'s roughly 10 hours a week spent running a business instead of doing hair.'
-                      : 'On commission, the salon handles booking, supplies, marketing, and laundry — plus you pay lower payroll taxes (7.65% vs 15.3%).'}
+                      : 'On commission, the salon handles booking, supplies, marketing, and laundry — plus you pay lower payroll taxes (8.85% vs 15.3%).'}
                   </p>
                 </div>
               );
@@ -443,11 +538,18 @@
               <span className="text-sm text-stone-400">{formatCurrency(calculations.currentTakeHome)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-1.5 pl-4 border-b border-stone-100">
-              <span className="text-xs text-stone-400">FICA (7.65%)</span>
-              <span className="text-sm text-red-600">−{formatCurrency(calculations.commissionFica)}</span>
+              <span className="text-xs text-stone-400" title="Employee FICA 7.65% + CA SDI 1.2%">Payroll Tax (8.85%)</span>
+              <span className="text-sm text-red-600">−{formatCurrency(calculations.payrollTax)}</span>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-1.5 pl-4 border-b border-stone-100">
+              <span className="text-xs text-stone-400" title="2025 FTB estimate — applies to both sides, not included in breakeven math">Est. CA income tax <span className="text-stone-300">(est.)</span></span>
+              <span className="text-sm text-red-600">−{formatCurrency(commissionCATax)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200 mb-4">
-              <span className="text-sm font-medium text-stone-700">After-Tax Commission Take-Home</span>
+              <div>
+                <span className="text-sm font-medium text-stone-700">After-Tax Commission Take-Home</span>
+                <p className="text-xs text-stone-400">federal only · ≈ {formatCurrency(calculations.adjustedCurrentTakeHome - commissionCATax)} after est. CA income tax</p>
+              </div>
               <span className="text-lg font-bold text-stone-700">{formatCurrency(calculations.adjustedCurrentTakeHome)}</span>
             </div>
 
@@ -465,8 +567,15 @@
               <span className="text-xs text-stone-400">Self-Employment Tax (15.3%)</span>
               <span className="text-sm text-red-600">−{formatCurrency(renterSeTax.seTax)}</span>
             </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-1.5 pl-4 border-b border-stone-100">
+              <span className="text-xs text-stone-400" title="2025 FTB estimate — applies to both sides, not included in breakeven math">Est. CA income tax <span className="text-stone-300">(est.)</span></span>
+              <span className="text-sm text-red-600">−{formatCurrency(renterCATax)}</span>
+            </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">
-              <span className="text-sm font-medium text-stone-700">After-Tax Renter Take-Home</span>
+              <div>
+                <span className="text-sm font-medium text-stone-700">After-Tax Renter Take-Home</span>
+                <p className="text-xs text-stone-400">federal only · ≈ {formatCurrency(renterTakeHome - renterCATax)} after est. CA income tax</p>
+              </div>
               <span className="text-lg font-bold text-stone-700">{formatCurrency(renterTakeHome)}</span>
             </div>
 
@@ -519,7 +628,9 @@
     const RenterToCommission = ({ config }) => {
       const [inputs, setInputs] = usePersistedState('r2c-inputs', {
         serviceIncome: 100000,
-        tips: 18000,
+        tipMode: 'percent',
+        tipPercent: config.defaultTipPercent,
+        tips: 100000 * config.defaultTipPercent / 100,
         startingRate: 40,
         weeklyRent: 525,
         colorSupplies: 10125,
@@ -527,11 +638,39 @@
         laundry: 0,
         ccFeePct: 2.9,
         otherExpenses: 1500,
-      });
+      }, migrateTipInputs);
       const [expenseMode, setExpenseMode] = useState('yearly');
 
       const handleChange = (field, value) => {
-        setInputs(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
+        setInputs(prev => {
+          const next = { ...prev, [field]: parseFloat(value) || 0 };
+          // In % mode, yearly dollar tips track service income
+          if (field === 'serviceIncome' && next.tipMode === 'percent') {
+            next.tips = next.serviceIncome * next.tipPercent / 100;
+          }
+          return next;
+        });
+      };
+
+      const handleTipChange = (field, value) => {
+        setInputs(prev => {
+          const num = parseFloat(value) || 0;
+          return field === 'tipPercent'
+            ? { ...prev, tipPercent: num, tips: prev.serviceIncome * num / 100 }
+            : { ...prev, [field]: num };
+        });
+      };
+
+      const handleTipModeChange = (mode) => {
+        setInputs(prev => {
+          if (mode === prev.tipMode) return prev;
+          if (mode === 'dollars') return { ...prev, tipMode: 'dollars' };
+          // Switching to %: carry the implied percentage so the dollar value doesn't jump
+          const implied = prev.serviceIncome > 0
+            ? Math.round((prev.tips / prev.serviceIncome) * 10000) / 100
+            : prev.tipPercent;
+          return { ...prev, tipMode: 'percent', tipPercent: implied };
+        });
       };
 
       const calculations = useMemo(() => calculateRenterToCommission({
@@ -540,6 +679,11 @@
         commissionTiers: config.commissionTiers,
         salonInvestments: config.salonInvestments,
       }), [inputs, config]);
+
+      // CA income tax is informational: it applies to both sides, so it is
+      // deliberately excluded from the verdict math.
+      const commissionCATax = calculateCAIncomeTax(calculations.commissionIncome);
+      const renterCATax = calculateCAIncomeTax(calculations.currentTakeHome);
 
       return (
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-stone-200/60">
@@ -558,10 +702,14 @@
                 <CurrencyInput value={inputs.serviceIncome} onChange={(e) => handleChange('serviceIncome', e.target.value)} />
                 <span className={helpClass}>Total services billed</span>
               </div>
-              <div className="flex flex-col">
-                <label className={labelClass}>Yearly Tips</label>
-                <CurrencyInput value={inputs.tips} onChange={(e) => handleChange('tips', e.target.value)} />
-              </div>
+              <TipField
+                tipMode={inputs.tipMode}
+                tipPercent={inputs.tipPercent}
+                tips={inputs.tips}
+                serviceIncome={inputs.serviceIncome}
+                onChange={handleTipChange}
+                onModeChange={handleTipModeChange}
+              />
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3 border-b border-stone-200">
               <span className="text-sm text-stone-500 font-bold">Total Gross Income</span>
@@ -599,12 +747,19 @@
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
               <div>
                 <span className="text-sm text-red-500">Self-Employment Tax (15.3%)</span>
-                <p className="text-xs text-stone-400">Federal — renters pay both employer + employee FICA</p>
+                <p className="text-xs text-stone-400">Federal — 12.4% Social Security (capped at $176,100 for 2025) + 2.9% Medicare on all earnings</p>
               </div>
               <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.selfEmploymentTax)}</span>
             </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-red-500" title="2025 FTB estimate — applies to both sides, not included in verdict math">Est. CA income tax <span className="text-stone-400">(est.)</span></span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(renterCATax)}</span>
+            </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">
-              <span className="text-sm font-medium text-stone-700">Estimated Renter Take-Home</span>
+              <div>
+                <span className="text-sm font-medium text-stone-700">Estimated Renter Take-Home</span>
+                <p className="text-xs text-stone-400">federal only · ≈ {formatCurrency(calculations.adjustedRenterTakeHome - renterCATax)} after est. CA income tax</p>
+              </div>
               <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedRenterTakeHome)}</span>
             </div>
           </div>
@@ -677,7 +832,7 @@
               <span className="text-lg font-bold text-stone-900">{formatCurrency(calculations.weeklyCommission)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
-              <span className="text-sm text-stone-500">Tips @ {config.defaultTipPercent}%</span>
+              <span className="text-sm text-stone-500">{inputs.tipMode === 'percent' ? `Tips @ ${inputs.tipPercent}%` : 'Tips'}</span>
               <span className="text-sm font-semibold text-stone-700">+{formatCurrency(inputs.tips)}/yr</span>
             </div>
 
@@ -687,13 +842,20 @@
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
               <div>
-                <span className="text-sm text-red-500">Commission FICA (7.65%)</span>
-                <p className="text-xs text-stone-400">Federal — employee share only, salon pays the other half</p>
+                <span className="text-sm text-red-500">Payroll Tax (8.85%)</span>
+                <p className="text-xs text-stone-400">FICA 7.65% + CA SDI 1.2% — employee share; salon pays employer FICA</p>
               </div>
-              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.commissionFica)}</span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(calculations.payrollTax)}</span>
+            </div>
+            <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-2 border-b border-stone-200">
+              <span className="text-sm text-red-500" title="2025 FTB estimate — applies to both sides, not included in verdict math">Est. CA income tax <span className="text-stone-400">(est.)</span></span>
+              <span className="text-sm font-semibold text-red-600">-{formatCurrency(commissionCATax)}</span>
             </div>
             <div className="flex flex-wrap justify-between items-baseline gap-x-4 py-3">
-              <span className="text-sm font-medium text-stone-700">Estimated Commission Take-Home</span>
+              <div>
+                <span className="text-sm font-medium text-stone-700">Estimated Commission Take-Home</span>
+                <p className="text-xs text-stone-400">federal only · ≈ {formatCurrency(calculations.adjustedCommissionIncome - commissionCATax)} after est. CA income tax</p>
+              </div>
               <span className="text-xl sm:text-2xl font-bold text-stone-900">{formatCurrency(calculations.adjustedCommissionIncome)}</span>
             </div>
           </div>
@@ -765,7 +927,7 @@
               <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg p-4 text-center">
                 <p className="text-xs text-emerald-600 font-medium mb-1">On Commission</p>
                 <p className="text-2xl font-bold text-emerald-700">{formatCurrency(calculations.adjustedCommissionIncome)}</p>
-                <p className="text-xs text-stone-400 mt-1">after FICA</p>
+                <p className="text-xs text-stone-400 mt-1">after payroll tax</p>
               </div>
             </div>
 
